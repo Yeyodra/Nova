@@ -1124,7 +1124,7 @@ impl AgentRunner {
             "stream": true,
         });
 
-        let client = reqwest::Client::new();
+        let client = crate::services::http_client::streaming_client()?;
         let mut request = client
             .post(endpoint)
             .header(CONTENT_TYPE, "application/json")
@@ -1207,7 +1207,7 @@ impl AgentRunner {
             format!("{}/messages", base_url.trim_end_matches('/'))
         };
 
-        let client = reqwest::Client::new();
+        let client = crate::services::http_client::streaming_client()?;
         let mut request = client
             .post(&endpoint)
             .header(CONTENT_TYPE, "application/json")

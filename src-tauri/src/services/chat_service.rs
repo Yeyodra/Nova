@@ -17,7 +17,7 @@ use crate::{
     models::Message,
 };
 
-use super::{now_rfc3339, provider_service};
+use super::{http_client, now_rfc3339, provider_service};
 
 /// Keywords that trigger full visual/preview system prompt injection
 const VISUAL_KEYWORDS: &[&str] = &[
@@ -334,7 +334,7 @@ async fn send_openai_compatible(
     on_token: &Channel<String>,
     cancel_token: &CancellationToken,
 ) -> AppResult<String> {
-    let client = reqwest::Client::new();
+    let client = http_client::streaming_client()?;
     let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
 
     let messages: Vec<Value> = history
@@ -413,7 +413,7 @@ async fn send_anthropic(
     on_token: &Channel<String>,
     cancel_token: &CancellationToken,
 ) -> AppResult<String> {
-    let client = reqwest::Client::new();
+    let client = http_client::streaming_client()?;
 
     let (system_msgs, chat_msgs): (Vec<_>, Vec<_>) =
         history.iter().partition(|m| m.role == "system");
@@ -836,7 +836,7 @@ async fn generate_title_openai(
     model: &str,
     messages: &[Value],
 ) -> AppResult<String> {
-    let client = reqwest::Client::new();
+    let client = http_client::request_client()?;
     let endpoint = format!(
         "{}/chat/completions",
         provider.base_url.trim_end_matches('/')
@@ -909,7 +909,7 @@ async fn generate_title_anthropic(
         format!("{}/messages", provider.base_url.trim_end_matches('/'))
     };
 
-    let client = reqwest::Client::new();
+    let client = http_client::request_client()?;
     let mut request = client
         .post(&endpoint)
         .header(CONTENT_TYPE, "application/json")
@@ -1022,7 +1022,7 @@ pub async fn generate_excalidraw(
 
     messages.push(serde_json::json!({"role": "user", "content": prompt}));
 
-    let client = reqwest::Client::new();
+    let client = http_client::request_client()?;
     let endpoint = format!("{}/chat/completions", provider.base_url.trim_end_matches('/'));
 
     let payload = serde_json::json!({
