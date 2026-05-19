@@ -1173,7 +1173,7 @@ mod tests {
         let call = ToolCall {
             tool: ToolName::RunCommand,
             input: serde_json::json!({
-                "command": format!("(sleep 3 && echo orphan > '{}') &", proof_str),
+                "command": format!("(sleep 3 && echo orphan > '{}') & sleep 60", proof_str),
             }),
         };
         let result = executor.execute(call).await;
