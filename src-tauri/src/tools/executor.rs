@@ -430,58 +430,127 @@ impl ToolExecutor {
             .stderr(Stdio::piped())
             .kill_on_drop(true);
 
-        let child = command.spawn().map_err(AppError::from)?;
+        // On Unix, place the child in its own process group so we can kill any
+        // descendants the shell backgrounds. Without this, a command like
+        // `sh -c "sleep 60 &"` orphans the sleep when sh exits or is killed —
+        // it survives the timeout and continues to run with the agent's privileges.
+        #[cfg(unix)]
+        command.process_group(0);
 
         const MAX_OUTPUT_BYTES: usize = 256 * 1024; // 256KB limit
 
-        match tokio::time::timeout(self.command_timeout, child.wait_with_output()).await {
-            Ok(Ok(output)) => {
-                let stdout_raw = &output.stdout;
-                let stderr_raw = &output.stderr;
-                let exit_code = output.status.code().unwrap_or(-1);
+        let mut child = command.spawn().map_err(AppError::from)?;
 
-                let stdout = if stdout_raw.len() > MAX_OUTPUT_BYTES {
-                    let truncated = String::from_utf8_lossy(&stdout_raw[..MAX_OUTPUT_BYTES]);
-                    format!(
-                        "{}\n\n... [truncated: {} total bytes, showing first {}]",
-                        truncated,
-                        stdout_raw.len(),
-                        MAX_OUTPUT_BYTES
-                    )
-                } else {
-                    String::from_utf8_lossy(stdout_raw).to_string()
-                };
+        // Capture the leader pid before waiting. This is the process group ID
+        // since we requested process_group(0).
+        #[cfg(unix)]
+        let pgid = child.id().map(|id| id as i32);
 
-                let stderr = if stderr_raw.len() > MAX_OUTPUT_BYTES {
-                    let truncated = String::from_utf8_lossy(&stderr_raw[..MAX_OUTPUT_BYTES]);
-                    format!(
-                        "{}\n\n... [truncated: {} total bytes, showing first {}]",
-                        truncated,
-                        stderr_raw.len(),
-                        MAX_OUTPUT_BYTES
-                    )
-                } else {
-                    String::from_utf8_lossy(stderr_raw).to_string()
-                };
+        let stdout_pipe = child.stdout.take();
+        let stderr_pipe = child.stderr.take();
 
-                Ok(format!(
-                    "exit_code: {}\nstdout:\n{}\nstderr:\n{}",
-                    exit_code, stdout, stderr
-                ))
+        let stdout_task = tokio::spawn(async move {
+            let mut buf = Vec::new();
+            let mut total = 0usize;
+            if let Some(mut out) = stdout_pipe {
+                let mut chunk = [0u8; 8192];
+                loop {
+                    let n = tokio::io::AsyncReadExt::read(&mut out, &mut chunk).await?;
+                    if n == 0 {
+                        break;
+                    }
+                    total += n;
+                    if buf.len() < MAX_OUTPUT_BYTES {
+                        let remaining = MAX_OUTPUT_BYTES - buf.len();
+                        buf.extend_from_slice(&chunk[..n.min(remaining)]);
+                    }
+                }
             }
-            Ok(Err(error)) => Err(AppError::from(error)),
-            Err(_) => Err(AppError::Internal(format!(
-                "Command timed out after {}s",
-                self.command_timeout.as_secs()
-            ))),
-        }
+            Ok::<_, std::io::Error>((buf, total))
+        });
+
+        let stderr_task = tokio::spawn(async move {
+            let mut buf = Vec::new();
+            let mut total = 0usize;
+            if let Some(mut err) = stderr_pipe {
+                let mut chunk = [0u8; 8192];
+                loop {
+                    let n = tokio::io::AsyncReadExt::read(&mut err, &mut chunk).await?;
+                    if n == 0 {
+                        break;
+                    }
+                    total += n;
+                    if buf.len() < MAX_OUTPUT_BYTES {
+                        let remaining = MAX_OUTPUT_BYTES - buf.len();
+                        buf.extend_from_slice(&chunk[..n.min(remaining)]);
+                    }
+                }
+            }
+            Ok::<_, std::io::Error>((buf, total))
+        });
+
+        let status = match tokio::time::timeout(self.command_timeout, child.wait()).await {
+            Ok(Ok(status)) => status,
+            Ok(Err(error)) => return Err(AppError::from(error)),
+            Err(_) => {
+                #[cfg(unix)]
+                if let Some(pgid) = pgid {
+                    // Kill the entire process group so backgrounded descendants don't survive.
+                    // SAFETY: killpg with a valid pgid we just spawned is a safe syscall.
+                    unsafe {
+                        libc::killpg(pgid, libc::SIGKILL);
+                    }
+                }
+                #[cfg(not(unix))]
+                {
+                    let _ = child.kill().await;
+                }
+                let _ = child.wait().await;
+                let _ = stdout_task.await;
+                let _ = stderr_task.await;
+                return Err(AppError::Internal(format!(
+                    "Command timed out after {}s",
+                    self.command_timeout.as_secs()
+                )));
+            }
+        };
+
+        let (stdout_raw, stdout_total) = stdout_task
+            .await
+            .map_err(|e| AppError::Internal(format!("stdout task failed: {e}")))?
+            .map_err(AppError::from)?;
+        let (stderr_raw, stderr_total) = stderr_task
+            .await
+            .map_err(|e| AppError::Internal(format!("stderr task failed: {e}")))?
+            .map_err(AppError::from)?;
+
+        let format_stream = |buf: &[u8], total: usize| {
+            if total > MAX_OUTPUT_BYTES {
+                let truncated = String::from_utf8_lossy(buf);
+                format!(
+                    "{}\n\n... [truncated: {} total bytes, showing first {}]",
+                    truncated, total, MAX_OUTPUT_BYTES
+                )
+            } else {
+                String::from_utf8_lossy(buf).to_string()
+            }
+        };
+
+        let stdout = format_stream(&stdout_raw, stdout_total);
+        let stderr = format_stream(&stderr_raw, stderr_total);
+        let exit_code = status.code().unwrap_or(-1);
+
+        Ok(format!(
+            "exit_code: {}\nstdout:\n{}\nstderr:\n{}",
+            exit_code, stdout, stderr
+        ))
     }
 
     async fn web_search(&self, input: &serde_json::Value) -> AppResult<String> {
         let query = input["query"]
             .as_str()
             .ok_or_else(|| AppError::Validation("Missing 'query' field".to_string()))?;
-        let client = reqwest::Client::new();
+        let client = crate::services::http_client::request_client()?;
         let url = format!(
             "https://api.duckduckgo.com/?q={}&format=json&no_html=1&skip_disambig=1",
             urlencoding::encode(query)
@@ -1084,6 +1153,41 @@ mod tests {
         );
 
         cleanup("run_cmd_timeout");
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn test_run_command_timeout_kills_backgrounded_children() {
+        // Regression: with only kill_on_drop on the parent shell, a command like
+        // `sh -c "sleep 60 &"` orphans the sleep when sh exits or is killed —
+        // the descendant survives the timeout and continues running with the
+        // agent's privileges. The fix puts the child in its own process group
+        // and killpg's the whole group on timeout.
+        let sandbox_path = with_sandbox("run_cmd_orphan");
+        let proof = sandbox_path.join("orphan_proof.txt");
+        let proof_str = proof.to_string_lossy().to_string();
+
+        let mut executor = ToolExecutor::new(sandbox_path);
+        executor.command_timeout = Duration::from_millis(300);
+
+        let call = ToolCall {
+            tool: ToolName::RunCommand,
+            input: serde_json::json!({
+                "command": format!("(sleep 3 && echo orphan > '{}') & sleep 60", proof_str),
+            }),
+        };
+        let result = executor.execute(call).await;
+        assert!(result.is_error, "timeout should trigger error");
+
+        // Wait long enough that the orphan WOULD have written its file if it survived.
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        assert!(
+            !proof.exists(),
+            "backgrounded descendant must be killed with the process group, but it wrote: {}",
+            proof.display()
+        );
+
+        cleanup("run_cmd_orphan");
     }
 
     // ── validate_path edge cases ─────────────────────────────────────────────
