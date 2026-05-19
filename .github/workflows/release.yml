@@ -90,6 +90,6 @@ jobs:
           tagName: ${{ steps.version.outputs.version }}
           releaseName: ${{ steps.version.outputs.version }}
           releaseBody: 'See assets below for download.'
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
