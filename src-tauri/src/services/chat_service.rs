@@ -669,8 +669,9 @@ async fn stream_anthropic_sse(
     // subsequent `data:` line.  Some gateways omit the `"type"` field from
     // the JSON payload, so we fall back to the SSE event name.
     let mut current_event = String::new();
+    let mut message_stop_received = false;
 
-    loop {
+    'outer: loop {
         tokio::select! {
             _ = cancel_token.cancelled() => {
                 return Err(AppError::Cancelled);
@@ -688,7 +689,8 @@ async fn stream_anthropic_sse(
                             }
 
                             if parse_anthropic_sse_line(&line, &mut current_event, on_token, &mut output)? {
-                                return Ok(output);
+                                message_stop_received = true;
+                                break 'outer;
                             }
                         }
                     }
@@ -697,6 +699,12 @@ async fn stream_anthropic_sse(
                 }
             }
         }
+    }
+
+    if !message_stop_received {
+        return Err(AppError::Http(
+            "Stream ended without completion signal — connection may have been interrupted. Please retry.".to_string(),
+        ));
     }
 
     Ok(output)
@@ -734,10 +742,7 @@ fn parse_anthropic_sse_line(
     };
     let payload = payload.trim();
 
-    let value: Value = match serde_json::from_str(payload) {
-        Ok(v) => v,
-        Err(_) => return Ok(false),
-    };
+    let value: Value = serde_json::from_str(payload)?;
 
     // Prefer `"type"` from the JSON payload; fall back to the preceding
     // `event:` line when the gateway strips it.
