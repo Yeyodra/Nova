@@ -544,7 +544,6 @@ impl ToolExecutor {
             "exit_code: {}\nstdout:\n{}\nstderr:\n{}",
             exit_code, stdout, stderr
         ))
-        )
     }
 
     async fn web_search(&self, input: &serde_json::Value) -> AppResult<String> {
