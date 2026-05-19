@@ -35,7 +35,10 @@ fn sensitive_globset() -> &'static GlobSet {
         }
         builder.build().unwrap_or_else(|error| {
             log::error!("sensitive_globset build failed: {error} — all file access will require permission");
-            GlobSetBuilder::new().build().expect("empty GlobSet always builds")
+            match GlobSetBuilder::new().build() {
+                Ok(globset) => globset,
+                Err(inner_error) => panic!("empty GlobSet build failed: {inner_error}"),
+            }
         })
     })
 }
