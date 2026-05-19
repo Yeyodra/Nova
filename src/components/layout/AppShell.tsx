@@ -163,8 +163,9 @@ export const AppShell: React.FC = () => {
     const localUnlisten: UnlistenFn[] = [];
 
     const setup = async () => {
-      const unlistenChatDone = await listen<string>('chat-done', () => {
+      const unlistenChatDone = await listen<string>('chat-done', (event) => {
         clearStreaming();
+        if (event.payload === 'cancelled') return;
         const sessionId = useSessionStore.getState().activeSessionId;
         if (sessionId) {
           invoke<Message[]>('get_messages', { sessionId })
@@ -309,7 +310,7 @@ export const AppShell: React.FC = () => {
 
       const unlistenPermission = await listen<{
         agentRunId: string;
-        type: 'sensitive_file' | 'outside_sandbox';
+        type: 'sensitive_file' | 'outside_sandbox' | 'shell_command';
         path: string;
         agentType: string;
       }>('agent-permission-request', (event) => {

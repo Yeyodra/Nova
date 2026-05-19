@@ -75,6 +75,24 @@
 
 ![Settings](screenshots/Providers.png)
 
+### Token Optimization — Before & After
+
+Prompt caching with Anthropic-format routing reduces token usage by **99.87%** on repeated requests.
+
+| | Before | After |
+|---|---|---|
+| **Total Tokens** | 19,819 | 26 |
+| **Prompt Tokens** | 19,779 | 0 (cache hit) |
+| **Completion Tokens** | 40 | 26 |
+
+**Before** — Every request sends the full system prompt (~19K prompt tokens):
+
+![Before Optimization](screenshots/before.png)
+
+**After** — Prompt caching enabled via Anthropic Messages API format (0 prompt tokens on cache hit):
+
+![After Optimization](screenshots/after.png)
+
 ---
 
 ## 🚀 Installation
@@ -88,7 +106,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/mhmmadazis/enowX-Coder.git
+git clone https://github.com/enowdev/enowX-Coder.git
 cd enowX-Coder
 
 # Install dependencies
@@ -295,8 +313,8 @@ This project is licensed under the **Apache License 2.0** - see the [LICENSE](LI
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/mhmmadazis/enowX-Coder/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/mhmmadazis/enowX-Coder/discussions)
+- **Issues**: [GitHub Issues](https://github.com/enowdev/enowX-Coder/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/enowdev/enowX-Coder/discussions)
 - **Email**: support@enowx.dev
 
 ---

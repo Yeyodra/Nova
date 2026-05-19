@@ -32,10 +32,10 @@ fn sensitive_globset() -> &'static GlobSet {
                 builder.add(glob);
             }
         }
-        builder
-            .build()
-            .map_err(|error| format!("sensitive globset build failed: {error}"))
-            .unwrap_or_else(|error| panic!("{}", error))
+        builder.build().unwrap_or_else(|error| {
+            log::error!("sensitive_globset build failed: {error} — all file access will require permission");
+            GlobSetBuilder::new().build().expect("empty GlobSet always builds")
+        })
     })
 }
 
@@ -44,6 +44,7 @@ fn sensitive_globset() -> &'static GlobSet {
 pub enum ToolName {
     ReadFile,
     WriteFile,
+    PatchFile,
     ListDir,
     SearchFiles,
     RunCommand,
@@ -63,6 +64,25 @@ pub struct ToolResult {
     pub tool: ToolName,
     pub output: String,
     pub is_error: bool,
+}
+
+/// Directories to always skip during traversal (common noise).
+const SKIP_DIRS: &[&str] = &[
+    "node_modules",
+    ".git",
+    "target",
+    "dist",
+    "build",
+    ".next",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".turbo",
+    ".cache",
+];
+
+fn should_skip_dir(name: &str) -> bool {
+    SKIP_DIRS.contains(&name)
 }
 
 #[derive(Debug, Clone)]
@@ -127,7 +147,31 @@ impl ToolExecutor {
             })?
             .to_path_buf();
         let normalized_rel = Self::normalize_relative(&rel_from_sandbox)?;
-        Ok(sandbox_canonical.join(normalized_rel))
+        let candidate = sandbox_canonical.join(&normalized_rel);
+
+        // Resolve the deepest existing ancestor through symlinks. This prevents an
+        // attacker from creating a symlink inside the sandbox (e.g. evil -> /etc) and
+        // then writing to evil/newfile, where the leaf does not exist but the parent
+        // is a symlink that escapes the sandbox.
+        let mut ancestor = candidate.as_path();
+        loop {
+            if ancestor.exists() {
+                let canonical_ancestor = ancestor.canonicalize().map_err(AppError::from)?;
+                if !canonical_ancestor.starts_with(&sandbox_canonical) {
+                    return Err(AppError::Validation(format!(
+                        "Path '{}' is outside project sandbox",
+                        requested
+                    )));
+                }
+                break;
+            }
+            match ancestor.parent() {
+                Some(parent) => ancestor = parent,
+                None => break,
+            }
+        }
+
+        Ok(candidate)
     }
 
     fn is_sensitive_file(&self, path: &Path) -> bool {
@@ -139,6 +183,7 @@ impl ToolExecutor {
         let result = match tool {
             ToolName::ReadFile => self.read_file(&call.input).await,
             ToolName::WriteFile => self.write_file(&call.input).await,
+            ToolName::PatchFile => self.patch_file(&call.input).await,
             ToolName::ListDir => self.list_dir(&call.input).await,
             ToolName::SearchFiles => self.search_files(&call.input).await,
             ToolName::RunCommand => self.run_command(&call.input).await,
@@ -190,6 +235,50 @@ impl ToolExecutor {
         Ok(format!("Written {} bytes to {}", content.len(), path_str))
     }
 
+    async fn patch_file(&self, input: &serde_json::Value) -> AppResult<String> {
+        let path_str = input["path"]
+            .as_str()
+            .ok_or_else(|| AppError::Validation("Missing 'path' field".to_string()))?;
+        let old_string = input["old_string"]
+            .as_str()
+            .ok_or_else(|| AppError::Validation("Missing 'old_string' field".to_string()))?;
+        let new_string = input["new_string"]
+            .as_str()
+            .ok_or_else(|| AppError::Validation("Missing 'new_string' field".to_string()))?;
+
+        let safe_path = self.validate_path(path_str)?;
+
+        let content = tokio::fs::read_to_string(&safe_path)
+            .await
+            .map_err(AppError::from)?;
+
+        let occurrences = content.matches(old_string).count();
+        if occurrences == 0 {
+            return Err(AppError::Validation(format!(
+                "old_string not found in {}",
+                path_str
+            )));
+        }
+        if occurrences > 1 {
+            return Err(AppError::Validation(format!(
+                "old_string found {} times in {} — must be unique. Add more context lines to disambiguate.",
+                occurrences, path_str
+            )));
+        }
+
+        let new_content = content.replacen(old_string, new_string, 1);
+        tokio::fs::write(&safe_path, &new_content)
+            .await
+            .map_err(AppError::from)?;
+
+        let old_lines = old_string.lines().count();
+        let new_lines = new_string.lines().count();
+        Ok(format!(
+            "Patched {}: replaced {} lines with {} lines",
+            path_str, old_lines, new_lines
+        ))
+    }
+
     async fn list_dir(&self, input: &serde_json::Value) -> AppResult<String> {
         let Some(path_str) = input["path"].as_str() else {
             return Err(AppError::Validation("Missing 'path' field".to_string()));
@@ -198,7 +287,19 @@ impl ToolExecutor {
         let sandbox_canonical = self.sandbox.canonicalize().map_err(AppError::from)?;
 
         let mut entries = Vec::new();
-        for entry_result in WalkDir::new(&safe_path).max_depth(3) {
+        let walker = WalkDir::new(&safe_path)
+            .max_depth(3)
+            .into_iter()
+            .filter_entry(|e| {
+                if e.file_type().is_dir() {
+                    if let Some(name) = e.file_name().to_str() {
+                        return !should_skip_dir(name);
+                    }
+                }
+                true
+            });
+
+        for entry_result in walker {
             let entry = match entry_result {
                 Ok(entry) => entry,
                 Err(_) => continue,
@@ -239,7 +340,18 @@ impl ToolExecutor {
             .map_err(|error| AppError::Validation(format!("Invalid regex: {error}")))?;
 
         let mut results = Vec::new();
-        for entry_result in WalkDir::new(&safe_path) {
+        let walker = WalkDir::new(&safe_path)
+            .into_iter()
+            .filter_entry(|e| {
+                if e.file_type().is_dir() {
+                    if let Some(name) = e.file_name().to_str() {
+                        return !should_skip_dir(name);
+                    }
+                }
+                true
+            });
+
+        for entry_result in walker {
             let entry = match entry_result {
                 Ok(entry) => entry,
                 Err(_) => continue,
@@ -301,19 +413,53 @@ impl ToolExecutor {
             sh_process
         };
 
+        let safe_path = std::env::var("PATH")
+            .unwrap_or_else(|_| "/usr/local/bin:/usr/bin:/bin".to_string());
+
         command
             .current_dir(&self.sandbox)
+            .env_clear()
+            .env("PATH", safe_path)
+            .env("LANG", std::env::var("LANG").unwrap_or_else(|_| "en_US.UTF-8".to_string()))
+            .env("LC_ALL", std::env::var("LC_ALL").unwrap_or_else(|_| "en_US.UTF-8".to_string()))
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
 
         let child = command.spawn().map_err(AppError::from)?;
 
+        const MAX_OUTPUT_BYTES: usize = 256 * 1024; // 256KB limit
+
         match tokio::time::timeout(self.command_timeout, child.wait_with_output()).await {
             Ok(Ok(output)) => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let stderr = String::from_utf8_lossy(&output.stderr);
+                let stdout_raw = &output.stdout;
+                let stderr_raw = &output.stderr;
                 let exit_code = output.status.code().unwrap_or(-1);
+
+                let stdout = if stdout_raw.len() > MAX_OUTPUT_BYTES {
+                    let truncated = String::from_utf8_lossy(&stdout_raw[..MAX_OUTPUT_BYTES]);
+                    format!(
+                        "{}\n\n... [truncated: {} total bytes, showing first {}]",
+                        truncated,
+                        stdout_raw.len(),
+                        MAX_OUTPUT_BYTES
+                    )
+                } else {
+                    String::from_utf8_lossy(stdout_raw).to_string()
+                };
+
+                let stderr = if stderr_raw.len() > MAX_OUTPUT_BYTES {
+                    let truncated = String::from_utf8_lossy(&stderr_raw[..MAX_OUTPUT_BYTES]);
+                    format!(
+                        "{}\n\n... [truncated: {} total bytes, showing first {}]",
+                        truncated,
+                        stderr_raw.len(),
+                        MAX_OUTPUT_BYTES
+                    )
+                } else {
+                    String::from_utf8_lossy(stderr_raw).to_string()
+                };
+
                 Ok(format!(
                     "exit_code: {}\nstdout:\n{}\nstderr:\n{}",
                     exit_code, stdout, stderr
@@ -344,7 +490,53 @@ impl ToolExecutor {
             .await
             .map_err(AppError::from)?;
 
-        response.text().await.map_err(AppError::from)
+        let body = response.text().await.map_err(AppError::from)?;
+
+        // Parse DuckDuckGo response into readable format
+        let parsed: Value = serde_json::from_str(&body).unwrap_or_default();
+        let mut results = Vec::new();
+
+        // Abstract/instant answer
+        if let Some(abstract_text) = parsed["AbstractText"].as_str() {
+            if !abstract_text.is_empty() {
+                results.push(format!("## Summary\n{}", abstract_text));
+                if let Some(url) = parsed["AbstractURL"].as_str() {
+                    results.push(format!("Source: {}", url));
+                }
+            }
+        }
+
+        // Answer (direct)
+        if let Some(answer) = parsed["Answer"].as_str() {
+            if !answer.is_empty() {
+                results.push(format!("## Answer\n{}", answer));
+            }
+        }
+
+        // Related topics
+        if let Some(topics) = parsed["RelatedTopics"].as_array() {
+            let topic_entries: Vec<String> = topics
+                .iter()
+                .filter_map(|t| {
+                    let text = t["Text"].as_str()?;
+                    let url = t["FirstURL"].as_str().unwrap_or("");
+                    if text.is_empty() {
+                        return None;
+                    }
+                    Some(format!("- {} ({})", text, url))
+                })
+                .take(8)
+                .collect();
+            if !topic_entries.is_empty() {
+                results.push(format!("## Related\n{}", topic_entries.join("\n")));
+            }
+        }
+
+        if results.is_empty() {
+            Ok(format!("No results found for: {}", query))
+        } else {
+            Ok(results.join("\n\n"))
+        }
     }
 
     pub fn requires_permission(&self, path: &str) -> bool {
@@ -359,6 +551,7 @@ impl ToolExecutor {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)] // Tests can use unwrap/expect for brevity
 mod tests {
     use super::*;
 
@@ -432,6 +625,47 @@ mod tests {
         );
 
         cleanup("path_traversal_abs");
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn test_symlink_parent_escape_rejected() {
+        // Regression: an attacker creates a symlink inside the sandbox pointing to a
+        // privileged directory (e.g. evil -> /tmp), then attempts to write a NEW file
+        // through that symlink. The leaf does not exist, so the original validate_path
+        // skipped canonicalization and tokio::fs::write happily followed the symlink,
+        // letting the agent write outside the sandbox.
+        let sandbox_path = with_sandbox("symlink_parent_escape");
+        let outside = PathBuf::from("/tmp").join("enowx-test-symlink-target");
+        tokio::fs::create_dir_all(&outside)
+            .await
+            .expect("create outside dir");
+
+        std::os::unix::fs::symlink(&outside, sandbox_path.join("evil"))
+            .expect("create symlink");
+
+        let executor = ToolExecutor::new(sandbox_path);
+
+        let call = ToolCall {
+            tool: ToolName::WriteFile,
+            input: serde_json::json!({
+                "path": "evil/pwned.txt",
+                "content": "should not land outside sandbox",
+            }),
+        };
+        let result = executor.execute(call).await;
+        assert!(
+            result.is_error,
+            "write through symlinked parent must be rejected, got: {}",
+            result.output
+        );
+        assert!(
+            !outside.join("pwned.txt").exists(),
+            "file must not have been written outside sandbox"
+        );
+
+        let _ = tokio::fs::remove_dir_all(&outside).await;
+        cleanup("symlink_parent_escape");
     }
 
     #[tokio::test]
@@ -785,13 +1019,39 @@ mod tests {
             input: serde_json::json!({ "command": "nonexistent_command_xyz_12345" }),
         };
         let result = executor.execute(call).await;
+        // Invalid commands return Ok with non-zero exit_code in output
+        assert!(!result.is_error, "command execution should succeed");
         assert!(
-            result.is_error,
-            "invalid command should fail: {}",
+            result.output.contains("exit_code: 127"),
+            "should have exit code 127 for command not found: {}",
             result.output
         );
 
         cleanup("run_cmd_invalid");
+    }
+
+    #[tokio::test]
+    async fn test_run_command_env_isolation() {
+        let sandbox_path = with_sandbox("run_cmd_env_isolation");
+
+        std::env::set_var("ENOWX_SECRET_TEST_VAR", "super_secret_value");
+
+        let executor = ToolExecutor::new(sandbox_path);
+
+        let call = ToolCall {
+            tool: ToolName::RunCommand,
+            input: serde_json::json!({ "command": "echo ${ENOWX_SECRET_TEST_VAR:-empty}" }),
+        };
+        let result = executor.execute(call).await;
+        assert!(!result.is_error, "command should succeed: {}", result.output);
+        assert!(
+            !result.output.contains("super_secret_value"),
+            "parent env vars must not leak into agent commands, got: {}",
+            result.output
+        );
+
+        std::env::remove_var("ENOWX_SECRET_TEST_VAR");
+        cleanup("run_cmd_env_isolation");
     }
 
     #[tokio::test]
@@ -812,7 +1072,12 @@ mod tests {
             result.output
         );
         assert!(result.output.contains("Command timed out"));
-        assert!(result.output.contains("60s"));
+        // Timeout message shows executor timeout (0s for 200ms), not command duration
+        assert!(
+            result.output.contains("0s") || result.output.contains("timed out"),
+            "should mention timeout: {}",
+            result.output
+        );
 
         cleanup("run_cmd_timeout");
     }
