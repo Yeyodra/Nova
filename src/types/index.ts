@@ -126,6 +126,17 @@ export interface AgentRunWithTools extends AgentRun {
   projectPath: string | null;
 }
 
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+export interface ChatUsageEvent {
+  sessionId: string;
+  usage: TokenUsage;
+}
+
 export interface PermissionRequest {
   type: 'sensitive_file' | 'outside_sandbox' | 'shell_command';
   path: string;
