@@ -1,10 +1,8 @@
-use reqwest::Client;
 use serde::Deserialize;
 
-use crate::{
-    error::{AppError, AppResult},
-    models::Provider,
-};
+use crate::error::{AppError, AppResult};
+use crate::models::Provider;
+use crate::services::http_client;
 
 #[derive(Debug, Deserialize)]
 struct ModelList {
@@ -56,7 +54,7 @@ pub async fn list_models(provider: &Provider) -> AppResult<Vec<String>> {
 
 async fn fetch_openai_models(base_url: &str, api_key: Option<&str>) -> AppResult<Vec<String>> {
     let url = format!("{}/models", base_url.trim_end_matches('/'));
-    let client = Client::new();
+    let client = http_client::request_client()?;
     let mut req = client.get(&url);
 
     if let Some(key) = api_key {
@@ -98,7 +96,7 @@ async fn fetch_anthropic_models(
     use_x_api_key: bool,
 ) -> AppResult<Vec<String>> {
     let url = format!("{}/models", base_url.trim_end_matches('/'));
-    let client = Client::new();
+    let client = http_client::request_client()?;
     let mut req = client
         .get(&url)
         .header("anthropic-version", "2023-06-01");
