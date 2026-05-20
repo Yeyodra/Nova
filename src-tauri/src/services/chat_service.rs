@@ -14,10 +14,13 @@ use uuid::Uuid;
 
 use crate::{
     error::{AppError, AppResult},
-    models::Message,
+    models::{Attachment, Message, MessageWithAttachments},
 };
 
+use super::file_service;
+
 use super::{http_client, now_rfc3339, provider_service};
+use base64::Engine;
 
 /// Keywords that trigger full visual/preview system prompt injection
 const VISUAL_KEYWORDS: &[&str] = &[
@@ -69,7 +72,8 @@ impl UsageAccumulator {
     }
 }
 
-pub async fn get_messages(db: &SqlitePool, session_id: &str) -> AppResult<Vec<Message>> {
+/// Internal: get raw messages for LLM context (no attachments needed)
+pub async fn get_messages_raw(db: &SqlitePool, session_id: &str) -> AppResult<Vec<Message>> {
     let messages = sqlx::query_as::<_, Message>(
         "SELECT id, session_id, role, content, created_at FROM messages \
          WHERE session_id = ?1 ORDER BY created_at ASC",
@@ -79,6 +83,53 @@ pub async fn get_messages(db: &SqlitePool, session_id: &str) -> AppResult<Vec<Me
     .await?;
 
     Ok(messages)
+}
+
+/// API: get messages with attachments for frontend display
+pub async fn get_messages(db: &SqlitePool, session_id: &str) -> AppResult<Vec<MessageWithAttachments>> {
+    let messages = sqlx::query_as::<_, Message>(
+        "SELECT id, session_id, role, content, created_at FROM messages \
+         WHERE session_id = ?1 ORDER BY created_at ASC",
+    )
+    .bind(session_id)
+    .fetch_all(db)
+    .await?;
+
+    let attachments = sqlx::query_as::<_, Attachment>(
+        "SELECT a.id, a.message_id, a.file_name, a.file_size, a.mime_type, a.file_path, a.extracted_text, a.created_at \
+         FROM attachments a \
+         INNER JOIN messages m ON a.message_id = m.id \
+         WHERE m.session_id = ?1 \
+         ORDER BY a.created_at ASC",
+    )
+    .bind(session_id)
+    .fetch_all(db)
+    .await?;
+
+    let mut attachment_map: std::collections::HashMap<String, Vec<Attachment>> =
+        std::collections::HashMap::new();
+    for att in attachments {
+        if let Some(ref msg_id) = att.message_id {
+            attachment_map.entry(msg_id.clone()).or_default().push(att);
+        }
+    }
+
+    let result = messages
+        .into_iter()
+        .map(|m| {
+            let atts = attachment_map.remove(&m.id).unwrap_or_default();
+            MessageWithAttachments {
+                id: m.id,
+                session_id: m.session_id,
+                role: m.role,
+                content: m.content,
+                created_at: m.created_at,
+                attachments: atts,
+            }
+        })
+        .collect();
+
+    Ok(result)
 }
 
 /// Return a trimmed conversation window suitable for sending to the LLM.
@@ -211,6 +262,7 @@ pub async fn send_message(
     content: &str,
     provider_id: Option<&str>,
     model_id: Option<&str>,
+    attachment_ids: Vec<String>,
     on_token: Channel<String>,
     app_handle: &AppHandle,
     cancel_token: CancellationToken,
@@ -221,6 +273,7 @@ pub async fn send_message(
         content,
         provider_id,
         model_id,
+        attachment_ids,
         on_token,
         app_handle,
         cancel_token,
@@ -246,6 +299,7 @@ async fn send_message_inner(
     content: &str,
     provider_id: Option<&str>,
     model_id: Option<&str>,
+    attachment_ids: Vec<String>,
     on_token: Channel<String>,
     app_handle: &AppHandle,
     cancel_token: CancellationToken,
@@ -276,6 +330,20 @@ async fn send_message_inner(
     .execute(db)
     .await?;
 
+    // Link pending attachments to this message
+    if !attachment_ids.is_empty() {
+        let placeholders: String = attachment_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let query = format!(
+            "UPDATE attachments SET message_id = ? WHERE id IN ({})",
+            placeholders
+        );
+        let mut q = sqlx::query(&query).bind(&user_message.id);
+        for id in &attachment_ids {
+            q = q.bind(id);
+        }
+        q.execute(db).await?;
+    }
+
     let provider = provider_service::get_provider_for_chat(db, provider_id).await?;
 
     // Pre-flight: check API key is configured (except for local providers like Ollama)
@@ -291,7 +359,7 @@ async fn send_message_inner(
         )));
     }
 
-    let raw_history = get_messages(db, session_id).await?;
+    let raw_history = get_messages_raw(db, session_id).await?;
     let history = trim_history_for_llm(&raw_history);
 
     // Debug: log context size so token bloat is easy to spot
@@ -308,6 +376,23 @@ async fn send_message_inner(
     // Use caller-supplied model_id if provided, otherwise fall back to provider default
     let model = model_id.unwrap_or(&provider.model);
 
+    // Fetch attachments for multimodal support
+    let last_user_attachments: Vec<Attachment> = if attachment_ids.is_empty() {
+        Vec::new()
+    } else {
+        let placeholders: String = attachment_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let query = format!(
+            "SELECT id, message_id, file_name, file_size, mime_type, file_path, extracted_text, created_at \
+             FROM attachments WHERE id IN ({})",
+            placeholders
+        );
+        let mut q = sqlx::query_as::<_, Attachment>(&query);
+        for id in &attachment_ids {
+            q = q.bind(id);
+        }
+        q.fetch_all(db).await.unwrap_or_default()
+    };
+
     log::info!(
         "chat route: provider={} type={} api_format={} → {}",
         provider.name,
@@ -323,6 +408,7 @@ async fn send_message_inner(
             provider.api_key.as_deref(),
             &provider.provider_type,
             &provider.base_url,
+            &last_user_attachments,
             &on_token,
             &cancel_token,
         )
@@ -335,6 +421,7 @@ async fn send_message_inner(
             provider.api_key.as_deref(),
             supports_stream_usage,
             history,
+            &last_user_attachments,
             &on_token,
             &cancel_token,
         )
@@ -374,21 +461,158 @@ async fn send_message_inner(
     Ok(())
 }
 
+// ─── Multimodal content builders ─────────────────────────────────────────────
+
+/// Build OpenAI multimodal content for a user message with attachments.
+/// Images become image_url parts, documents have their text prepended as XML.
+/// Returns plain string Value when no images (backward compatible).
+fn build_openai_message_content(text: &str, attachments: &[Attachment]) -> Value {
+    let images: Vec<&Attachment> = attachments
+        .iter()
+        .filter(|a| a.mime_type.starts_with("image/"))
+        .collect();
+    let documents: Vec<&Attachment> = attachments
+        .iter()
+        .filter(|a| !a.mime_type.starts_with("image/"))
+        .collect();
+
+    // Build text content with document context prepended
+    let mut full_text = String::new();
+    if !documents.is_empty() {
+        full_text.push_str("<files_info>\n");
+        for doc in &documents {
+            if let Some(ref extracted) = doc.extracted_text {
+                full_text.push_str(&format!(
+                    "<file name=\"{}\" type=\"{}\">\n{}\n</file>\n",
+                    doc.file_name, doc.mime_type, extracted
+                ));
+            }
+        }
+        full_text.push_str("</files_info>\n\n");
+    }
+    full_text.push_str(text);
+
+    // If no images, return just the text (backward compatible)
+    if images.is_empty() {
+        return serde_json::json!(full_text);
+    }
+
+    // Build content array with text + image_url parts
+    let mut content_parts: Vec<Value> =
+        vec![serde_json::json!({ "type": "text", "text": full_text })];
+
+    for img in &images {
+        let path = std::path::Path::new(&img.file_path);
+        // compress_image always outputs JPEG, so use "image/jpeg" for the data URI
+        let (data, mime) = match file_service::compress_image(path, 1920, 85) {
+            Ok(compressed) => (compressed, "image/jpeg".to_string()),
+            Err(e) => {
+                // Fallback: read raw file bytes with original mime type
+                log::warn!("Image compression failed for {}: {}, using raw file", img.file_name, e);
+                match std::fs::read(path) {
+                    Ok(raw) => (raw, img.mime_type.clone()),
+                    Err(_) => continue, // Skip only if file is truly unreadable
+                }
+            }
+        };
+        let data_uri = file_service::encode_to_base64(&data, &mime);
+        content_parts.push(serde_json::json!({
+            "type": "image_url",
+            "image_url": { "url": data_uri, "detail": "auto" }
+        }));
+    }
+
+    serde_json::json!(content_parts)
+}
+
+/// Build Anthropic multimodal content blocks for a user message with attachments.
+fn build_anthropic_message_content(text: &str, attachments: &[Attachment]) -> Vec<Value> {
+    let images: Vec<&Attachment> = attachments
+        .iter()
+        .filter(|a| a.mime_type.starts_with("image/"))
+        .collect();
+    let documents: Vec<&Attachment> = attachments
+        .iter()
+        .filter(|a| !a.mime_type.starts_with("image/"))
+        .collect();
+
+    // Build text with document context
+    let mut full_text = String::new();
+    if !documents.is_empty() {
+        full_text.push_str("<files_info>\n");
+        for doc in &documents {
+            if let Some(ref extracted) = doc.extracted_text {
+                full_text.push_str(&format!(
+                    "<file name=\"{}\" type=\"{}\">\n{}\n</file>\n",
+                    doc.file_name, doc.mime_type, extracted
+                ));
+            }
+        }
+        full_text.push_str("</files_info>\n\n");
+    }
+    full_text.push_str(text);
+
+    let mut content_blocks: Vec<Value> = Vec::new();
+
+    // Add image blocks first (Anthropic convention)
+    for img in &images {
+        let path = std::path::Path::new(&img.file_path);
+        let (data, mime) = match file_service::compress_image(path, 1920, 85) {
+            Ok(compressed) => (compressed, "image/jpeg".to_string()),
+            Err(e) => {
+                log::warn!("Image compression failed for {}: {}, using raw file", img.file_name, e);
+                match std::fs::read(path) {
+                    Ok(raw) => (raw, img.mime_type.clone()),
+                    Err(_) => continue,
+                }
+            }
+        };
+        let b64_data = base64::engine::general_purpose::STANDARD.encode(&data);
+        content_blocks.push(serde_json::json!({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": mime,
+                "data": b64_data
+            }
+        }));
+    }
+
+    // Add text block
+    content_blocks.push(serde_json::json!({ "type": "text", "text": full_text }));
+
+    content_blocks
+}
+
+#[allow(clippy::too_many_arguments)]
 async fn send_openai_compatible(
     base_url: &str,
     model: &str,
     api_key: Option<&str>,
     include_usage: bool,
     history: Vec<Message>,
+    last_user_attachments: &[Attachment],
     on_token: &Channel<String>,
     cancel_token: &CancellationToken,
 ) -> AppResult<(String, Option<TokenUsage>)> {
     let client = http_client::streaming_client()?;
     let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
 
+    let last_user_idx = history.iter().rposition(|m| m.role == "user");
+
     let messages: Vec<Value> = history
         .iter()
-        .map(|m| serde_json::json!({ "role": m.role, "content": m.content }))
+        .enumerate()
+        .map(|(i, m)| {
+            if Some(i) == last_user_idx && !last_user_attachments.is_empty() {
+                serde_json::json!({
+                    "role": m.role,
+                    "content": build_openai_message_content(&m.content, last_user_attachments)
+                })
+            } else {
+                serde_json::json!({ "role": m.role, "content": m.content })
+            }
+        })
         .collect();
 
     let mut payload = serde_json::json!({
@@ -457,12 +681,14 @@ async fn send_openai_compatible(
     stream_openai_sse(response, on_token, cancel_token).await
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn send_anthropic(
     history: Vec<Message>,
     model: &str,
     api_key: Option<&str>,
     provider_type: &str,
     base_url: &str,
+    last_user_attachments: &[Attachment],
     on_token: &Channel<String>,
     cancel_token: &CancellationToken,
 ) -> AppResult<(String, Option<TokenUsage>)> {
@@ -471,15 +697,27 @@ async fn send_anthropic(
     let (system_msgs, chat_msgs): (Vec<_>, Vec<_>) =
         history.iter().partition(|m| m.role == "system");
 
+    // Find the last user message index within chat_msgs
+    let last_user_idx = chat_msgs.iter().rposition(|m| m.role == "user");
+
     // Build messages as Anthropic content-block format for cache_control support
     let mut messages: Vec<Value> = chat_msgs
         .iter()
-        .filter(|m| m.role == "user" || m.role == "assistant")
-        .map(|m| {
-            serde_json::json!({
-                "role": m.role,
-                "content": [{ "type": "text", "text": m.content }]
-            })
+        .enumerate()
+        .filter(|(_, m)| m.role == "user" || m.role == "assistant")
+        .map(|(i, m)| {
+            if Some(i) == last_user_idx && !last_user_attachments.is_empty() {
+                let content_blocks = build_anthropic_message_content(&m.content, last_user_attachments);
+                serde_json::json!({
+                    "role": m.role,
+                    "content": content_blocks
+                })
+            } else {
+                serde_json::json!({
+                    "role": m.role,
+                    "content": [{ "type": "text", "text": m.content }]
+                })
+            }
         })
         .collect();
 
@@ -870,7 +1108,7 @@ pub async fn generate_title(
 ) -> AppResult<String> {
     let provider = provider_service::get_provider_for_chat(db, provider_id).await?;
     let model = model_id.unwrap_or(&provider.model);
-    let history = get_messages(db, session_id).await?;
+    let history = get_messages_raw(db, session_id).await?;
 
     if history.is_empty() {
         return Ok("New Chat".to_string());
@@ -1162,4 +1400,120 @@ pub async fn generate_excalidraw(
         .to_string();
 
     Ok(cleaned)
+}
+
+#[cfg(test)]
+#[allow(clippy::disallowed_methods)]
+mod multimodal_tests {
+    use super::*;
+    use crate::models::Attachment;
+
+    fn make_image_attachment() -> Attachment {
+        Attachment {
+            id: "att-img-1".to_string(),
+            message_id: Some("msg-1".to_string()),
+            file_name: "photo.png".to_string(),
+            file_size: 1024,
+            mime_type: "image/png".to_string(),
+            file_path: "".to_string(),
+            extracted_text: None,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    fn make_doc_attachment() -> Attachment {
+        Attachment {
+            id: "att-doc-1".to_string(),
+            message_id: Some("msg-1".to_string()),
+            file_name: "report.pdf".to_string(),
+            file_size: 2048,
+            mime_type: "application/pdf".to_string(),
+            file_path: "".to_string(),
+            extracted_text: Some("This is the extracted PDF content.".to_string()),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn test_build_openai_multimodal_text_only() {
+        let content = build_openai_message_content("Hello", &[]);
+        assert_eq!(content, serde_json::json!("Hello"));
+    }
+
+    #[test]
+    fn test_build_openai_multimodal_with_document() {
+        let doc = make_doc_attachment();
+        let content = build_openai_message_content("Summarize this", &[doc]);
+        // Should be plain text (no images), but with XML prepended
+        let text = content.as_str().unwrap();
+        assert!(text.contains("<files_info>"));
+        assert!(text.contains("report.pdf"));
+        assert!(text.contains("This is the extracted PDF content."));
+        assert!(text.contains("Summarize this"));
+    }
+
+    #[test]
+    fn test_build_openai_multimodal_image_produces_array() {
+        // Image with empty path will fail compress_image, so content array has only text
+        let img = make_image_attachment();
+        let content = build_openai_message_content("Look at this", &[img]);
+        // Even though compress fails, the function still returns an array format
+        // because images were present (just no image_url parts added)
+        let arr = content.as_array().unwrap();
+        assert_eq!(arr[0]["type"], "text");
+        assert_eq!(arr[0]["text"], "Look at this");
+    }
+
+    #[test]
+    fn test_build_anthropic_multimodal_text_only() {
+        let blocks = build_anthropic_message_content("Hello", &[]);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0]["type"], "text");
+        assert_eq!(blocks[0]["text"], "Hello");
+    }
+
+    #[test]
+    fn test_build_anthropic_multimodal_with_document() {
+        let doc = make_doc_attachment();
+        let blocks = build_anthropic_message_content("Summarize this", &[doc]);
+        assert_eq!(blocks.len(), 1); // Just text block (no image)
+        let text = blocks[0]["text"].as_str().unwrap();
+        assert!(text.contains("<files_info>"));
+        assert!(text.contains("report.pdf"));
+        assert!(text.contains("This is the extracted PDF content."));
+        assert!(text.contains("Summarize this"));
+    }
+
+    #[test]
+    fn test_build_openai_multimodal_text_only_backward_compat() {
+        // No attachments = plain string content (not array)
+        let content = build_openai_message_content("Just text", &[]);
+        assert!(content.is_string());
+        assert_eq!(content.as_str().unwrap(), "Just text");
+    }
+
+    #[test]
+    fn test_build_anthropic_multimodal_image_produces_blocks() {
+        // Image with empty path will fail compress_image, so only text block
+        let img = make_image_attachment();
+        let blocks = build_anthropic_message_content("Describe this", &[img]);
+        // Only text block since compress fails on empty path
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0]["type"], "text");
+        assert_eq!(blocks[0]["text"], "Describe this");
+    }
+
+    #[test]
+    fn test_build_openai_multimodal_mixed_doc_and_image() {
+        let doc = make_doc_attachment();
+        let img = make_image_attachment();
+        let content = build_openai_message_content("Analyze", &[doc, img]);
+        // Has images → returns array format
+        let arr = content.as_array().unwrap();
+        assert_eq!(arr[0]["type"], "text");
+        let text = arr[0]["text"].as_str().unwrap();
+        assert!(text.contains("<files_info>"));
+        assert!(text.contains("report.pdf"));
+        assert!(text.contains("Analyze"));
+    }
 }

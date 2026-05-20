@@ -19,9 +19,10 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' blob:; connect-src 'self' https://* http://localhost:*; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'",
+      "csp": "default-src 'self' blob:; connect-src 'self' https://* http://localhost:*; img-src 'self' data: blob: asset: https://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'",
       "assetProtocol": {
-        "enable": true
+        "enable": true,
+        "scope": ["$APPDATA/**", "$APPDATA/attachments/**"]
       }
     }
   },

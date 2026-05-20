@@ -1,0 +1,26 @@
+export function getTerminalTheme() {
+  return {
+    background: '#1E1E1E',
+    foreground: '#D4D4D4',
+    cursor: '#AEAFAD',
+    cursorAccent: '#1E1E1E',
+    selectionBackground: '#264F78',
+    selectionForeground: '#FFFFFF',
+    black: '#1E1E1E',
+    red: '#F44747',
+    green: '#6A9955',
+    yellow: '#D7BA7D',
+    blue: '#569CD6',
+    magenta: '#C586C0',
+    cyan: '#4EC9B0',
+    white: '#D4D4D4',
+    brightBlack: '#808080',
+    brightRed: '#F44747',
+    brightGreen: '#6A9955',
+    brightYellow: '#D7BA7D',
+    brightBlue: '#569CD6',
+    brightMagenta: '#C586C0',
+    brightCyan: '#4EC9B0',
+    brightWhite: '#FFFFFF',
+  };
+}

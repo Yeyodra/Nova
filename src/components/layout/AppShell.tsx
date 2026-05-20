@@ -8,15 +8,18 @@ import { ChatHeader } from '@/components/layout/ChatHeader';
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import { ChatInputBar, ChatInputBarHandle } from '@/components/chat/ChatInputBar';
 import { PermissionDialog } from '@/components/chat/PermissionDialog';
+import { TerminalView } from '@/components/terminal/TerminalView';
 import { useChatStore } from '@/stores/useChatStore';
 import { useProjectStore } from '@/stores/useProjectStore';
 import { useSessionStore } from '@/stores/useSessionStore';
 import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { useAgentStore } from '@/stores/useAgentStore';
+import { useLayoutStore } from '@/stores/useLayoutStore';
 import { SettingsModal } from '@/components/settings/SettingsModal';
 import { ExcalidrawCanvas } from '@/components/canvas/ExcalidrawCanvas';
 import { AgentConfig, AgentRunWithTools, AgentType, ChatUsageEvent, Message, PermissionRequest, Project, Provider, ProviderModelConfig, Session, ToolCall } from '@/types';
+import { useFileStore } from '@/stores/useFileStore';
 import { cn } from '@/lib/utils';
 
 export const AppShell: React.FC = () => {
@@ -33,6 +36,9 @@ export const AppShell: React.FC = () => {
   const toggleLeftSidebar = useUIStore((s) => s.toggleLeftSidebar);
   const rightSidebarOpen = useUIStore((s) => s.rightSidebarOpen);
   const mainView = useUIStore((s) => s.mainView);
+  const bottomPanelOpen = useLayoutStore((s) => s.bottomPanelOpen);
+  const bottomPanelHeight = useLayoutStore((s) => s.bottomPanelHeight);
+  const bottomPanelFullscreen = useLayoutStore((s) => s.bottomPanelFullscreen);
 
   const {
     addAgentRun,
@@ -48,6 +54,23 @@ export const AppShell: React.FC = () => {
   } = useAgentStore();
 
   const chatInputRef = React.useRef<ChatInputBarHandle>(null);
+
+  // Terminal toggle shortcut (Ctrl+`)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === '`') {
+        e.preventDefault();
+        const state = useLayoutStore.getState();
+        if (state.bottomPanelOpen) {
+          state.toggleBottomPanel();
+        } else {
+          state.setBottomPanel('terminal');
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Track which sessions have already been auto-renamed to avoid duplicates
   const renamedSessionsRef = React.useRef<Set<string>>(new Set());
@@ -435,7 +458,10 @@ export const AppShell: React.FC = () => {
     }
   };
 
-  const handleSend = async (content: string) => {
+  const handleSend = async (content: string, attachmentIds?: string[]) => {
+    // Capture pending files IMMEDIATELY before any async work — ChatInputBar clears them right after calling onSend
+    const pendingFiles = attachmentIds ? useFileStore.getState().pendingFiles.filter(f => attachmentIds.includes(f.id)) : [];
+
     const ctx = await ensureSession();
     if (!ctx) return;
 
@@ -448,6 +474,7 @@ export const AppShell: React.FC = () => {
         role: 'user',
         content,
         createdAt: new Date().toISOString(),
+        attachments: pendingFiles.length > 0 ? pendingFiles : undefined,
       };
       addMessage(userMsg);
 
@@ -483,6 +510,7 @@ export const AppShell: React.FC = () => {
       role: 'user',
       content,
       createdAt: new Date().toISOString(),
+      attachments: pendingFiles.length > 0 ? pendingFiles : undefined,
     };
     addMessage(userMsg);
     setStreaming(true);
@@ -499,6 +527,7 @@ export const AppShell: React.FC = () => {
         providerId: defaultProviderId ?? null,
         modelId: selectedModelId ?? null,
         onToken,
+        attachmentIds: attachmentIds ?? null,
       });
     } catch (err) {
       console.error('send_message error:', err);
@@ -590,14 +619,29 @@ export const AppShell: React.FC = () => {
 
       <main className="flex flex-col overflow-hidden min-h-0">
         <ChatHeader onToggleLeftSidebar={!leftSidebarOpen ? toggleLeftSidebar : undefined} />
-        {mainView === 'chat' ? (
-          <>
-            <ChatPanel onChipClick={(text) => chatInputRef.current?.prefill(text)} />
-            <ChatInputBar ref={chatInputRef} onSend={handleSend} onStop={handleStop} />
-          </>
-        ) : (
-          <ExcalidrawCanvas />
-        )}
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+          {/* Chat/Canvas area */}
+          <div className={cn('flex flex-col overflow-hidden', bottomPanelOpen && !bottomPanelFullscreen ? 'flex-1 min-h-0' : 'flex-1')}>
+            {mainView === 'chat' ? (
+              <>
+                <ChatPanel onChipClick={(text) => chatInputRef.current?.prefill(text)} />
+                <ChatInputBar ref={chatInputRef} onSend={handleSend} onStop={handleStop} />
+              </>
+            ) : (
+              <ExcalidrawCanvas />
+            )}
+          </div>
+
+          {/* Terminal dock panel */}
+          {bottomPanelOpen && (
+            <div
+              className="border-t border-[var(--border)] bg-[var(--bg)] shrink-0"
+              style={{ height: bottomPanelFullscreen ? '100%' : bottomPanelHeight }}
+            >
+              <TerminalView />
+            </div>
+          )}
+        </div>
       </main>
 
       <div className={cn(

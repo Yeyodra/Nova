@@ -24,6 +24,16 @@ pub enum AppError {
     Internal(String),
     #[error("Cancelled")]
     Cancelled,
+    #[error("File too large: {0}")]
+    FileTooLarge(String),
+    #[error("Too many files: {0}")]
+    TooManyFiles(String),
+    #[error("Unsupported file type: {0}")]
+    UnsupportedFileType(String),
+    #[error("Extraction failed: {0}")]
+    ExtractionFailed(String),
+    #[error("File not found: {0}")]
+    FileNotFound(String),
 }
 
 impl From<AppError> for String {
@@ -94,5 +104,29 @@ mod tests {
     fn test_error_to_string() {
         let err: String = AppError::NotFound("test".to_string()).into();
         assert_eq!(err, "Not found: test");
+    }
+
+    #[test]
+    fn test_file_too_large_error() {
+        let err = AppError::FileTooLarge("10MB limit exceeded".to_string());
+        assert_eq!(err.to_string(), "File too large: 10MB limit exceeded");
+    }
+
+    #[test]
+    fn test_too_many_files_error() {
+        let err = AppError::TooManyFiles("max 5 files".to_string());
+        assert_eq!(err.to_string(), "Too many files: max 5 files");
+    }
+
+    #[test]
+    fn test_unsupported_file_type_error() {
+        let err = AppError::UnsupportedFileType("application/exe".to_string());
+        assert_eq!(err.to_string(), "Unsupported file type: application/exe");
+    }
+
+    #[test]
+    fn test_file_not_found_error() {
+        let err = AppError::FileNotFound("/tmp/missing.txt".to_string());
+        assert_eq!(err.to_string(), "File not found: /tmp/missing.txt");
     }
 }

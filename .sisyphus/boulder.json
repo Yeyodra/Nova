@@ -1,0 +1,230 @@
+{
+  "active_plan": "C:\\Users\\Nazril\\Documents\\Projek\\enowX-Coder\\.sisyphus\\plans\\file-attachment.md",
+  "started_at": "2026-05-20T10:29:21.820Z",
+  "session_ids": [
+    "ses_1bb11312affefMFMp26KXlWZdZ",
+    "ses_1b9e5ee08ffeuyYQyrUnk3ss0M",
+    "ses_1b9e5deb7ffepBMyv3B20W9wsy",
+    "ses_1b9e5c7b0ffeivhaI0kN7XBPId",
+    "ses_1b8918a4affeycAsRk3IFzRDn6",
+    "ses_1b8904b53ffeqGFMGUYcRld96R",
+    "ses_1b890420affeGdzMuZ6tuqRHfl",
+    "ses_1b8903070ffex0sc4S5j8ULRBf",
+    "ses_1b8901597ffeWY0dLOxot1K7f6",
+    "ses_1b8638bffffe73BFhsfWe00Q1e"
+  ],
+  "session_origins": {
+    "ses_1bb11312affefMFMp26KXlWZdZ": "direct",
+    "ses_1b9e5ee08ffeuyYQyrUnk3ss0M": "appended",
+    "ses_1b9e5deb7ffepBMyv3B20W9wsy": "appended",
+    "ses_1b9e5c7b0ffeivhaI0kN7XBPId": "appended",
+    "ses_1b8918a4affeycAsRk3IFzRDn6": "appended",
+    "ses_1b8904b53ffeqGFMGUYcRld96R": "appended",
+    "ses_1b890420affeGdzMuZ6tuqRHfl": "appended",
+    "ses_1b8903070ffex0sc4S5j8ULRBf": "appended",
+    "ses_1b8901597ffeWY0dLOxot1K7f6": "appended",
+    "ses_1b8638bffffe73BFhsfWe00Q1e": "appended"
+  },
+  "plan_name": "file-attachment",
+  "agent": "atlas",
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "Test Infrastructure Setup",
+      "session_id": "ses_1bb0ca542ffeCq3EluPhE2FuHJ",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-20T10:37:56.376Z"
+    },
+    "todo:2": {
+      "task_key": "todo:2",
+      "task_label": "2",
+      "task_title": "TypeScript Type Definitions for Attachments",
+      "session_id": "ses_1bb07b168ffeSGXUiqngZvn1pO",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-20T10:41:14.076Z"
+    },
+    "todo:3": {
+      "task_key": "todo:3",
+      "task_label": "3",
+      "task_title": "Database Migration — Attachments Table",
+      "session_id": "ses_1bb056eedffeO5mOwcu7DlNMIG",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-20T10:44:40.213Z"
+    },
+    "todo:4": {
+      "task_key": "todo:4",
+      "task_label": "4",
+      "task_title": "Tauri Capabilities — Grant FS Permissions",
+      "session_id": "ses_1bb026839ffechc9atpwcMXLG8",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-20T10:48:46.136Z"
+    },
+    "todo:5": {
+      "task_key": "todo:5",
+      "task_label": "5",
+      "task_title": "Rust Dependencies — image, pdf-extract, base64, mime_guess",
+      "session_id": "ses_1bafecd84ffepaLhPoM959dIHr",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-20T10:53:43.907Z"
+    },
+    "todo:6": {
+      "task_key": "todo:6",
+      "task_label": "6",
+      "task_title": "Frontend Dependencies Check",
+      "session_id": "ses_1bafa20c9ffeGeivfmH26VDfTU",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-20T10:55:42.630Z"
+    },
+    "todo:7": {
+      "task_key": "todo:7",
+      "task_label": "7",
+      "task_title": "Rust File Service — Copy, Compress, Base64, Delete (TDD)",
+      "session_id": "ses_1baf7f79ffferNNHW8aIztQgEB",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-05-20T11:04:56.159Z"
+    },
+    "todo:8": {
+      "task_key": "todo:8",
+      "task_label": "8",
+      "task_title": "Rust PDF/TXT Extraction Service (TDD)",
+      "session_id": "ses_1baeee5c7ffemwSM7rNv12pX1l",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-05-20T11:09:20.950Z"
+    },
+    "todo:9": {
+      "task_key": "todo:9",
+      "task_label": "9",
+      "task_title": "Rust File Commands — Tauri IPC Layer (TDD)",
+      "session_id": "ses_1baeb3c7fffeh170z01SkePDDJ",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-20T11:17:11.499Z"
+    },
+    "todo:10": {
+      "task_key": "todo:10",
+      "task_label": "10",
+      "task_title": "Rust Chat Service — Multimodal Message Construction (TDD)",
+      "session_id": "ses_1bae3bd17ffecic5pv516Pa3Z9",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-05-20T11:29:19.449Z"
+    },
+    "todo:11": {
+      "task_key": "todo:11",
+      "task_label": "11",
+      "task_title": "Rust Cleanup Service — Orphan Detection, Cascade Delete (TDD)",
+      "session_id": "ses_1bad9356effecyFfWyqhmW4i0c",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-20T11:33:52.013Z"
+    },
+    "todo:12": {
+      "task_key": "todo:12",
+      "task_label": "12",
+      "task_title": "Zustand File Store — useFileStore (TDD)",
+      "session_id": "ses_1bad5142effe4d2BLrOVcEk0XJ",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-20T11:36:02.592Z"
+    },
+    "todo:13": {
+      "task_key": "todo:13",
+      "task_label": "13",
+      "task_title": "FileChips Component — Preview Chips Above Input (TDD)",
+      "session_id": "ses_1bad34d83ffeX61ZkZhE7Z0kOZ",
+      "agent": "Sisyphus-Junior",
+      "category": "visual-engineering",
+      "updated_at": "2026-05-20T11:38:39.693Z"
+    },
+    "todo:14": {
+      "task_key": "todo:14",
+      "task_label": "14",
+      "task_title": "DragDropZone Component — Overlay + Drop Handler (TDD)",
+      "session_id": "ses_1bad10dc1ffe9YdfjUGqzrKbP6",
+      "agent": "Sisyphus-Junior",
+      "category": "visual-engineering",
+      "updated_at": "2026-05-20T11:40:17.180Z"
+    },
+    "todo:15": {
+      "task_key": "todo:15",
+      "task_label": "15",
+      "task_title": "ChatInputBar Integration — Paperclip + Paste (TDD)",
+      "session_id": "ses_1baced1d1ffecELXb2nod84oUK",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-20T11:45:46.431Z"
+    },
+    "todo:16": {
+      "task_key": "todo:16",
+      "task_label": "16",
+      "task_title": "ChatMessage Attachment Rendering — Images + Docs (TDD)",
+      "session_id": "ses_1bac9e469ffen8u7ZMZQcWn9v7",
+      "agent": "Sisyphus-Junior",
+      "category": "visual-engineering",
+      "updated_at": "2026-05-20T11:49:51.229Z"
+    },
+    "todo:17": {
+      "task_key": "todo:17",
+      "task_label": "17",
+      "task_title": "Image Lightbox/Zoom Component (TDD)",
+      "session_id": "ses_1bac6aa89ffeZoveXaE8shcanv",
+      "agent": "Sisyphus-Junior",
+      "category": "visual-engineering",
+      "updated_at": "2026-05-20T11:51:48.192Z"
+    },
+    "todo:18": {
+      "task_key": "todo:18",
+      "task_label": "18",
+      "task_title": "End-to-End Integration — Full Flow Wiring",
+      "session_id": "ses_1bac4a945ffe3jk0lZbqoFdomz",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-05-20T11:55:54.461Z"
+    },
+    "todo:19": {
+      "task_key": "todo:19",
+      "task_label": "19",
+      "task_title": "Error Handling + Edge Cases",
+      "session_id": "ses_1bac108b2ffeLnlEUxBZvQVVJa",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-20T12:02:51.830Z"
+    },
+    "todo:20": {
+      "task_key": "todo:20",
+      "task_label": "20",
+      "task_title": "Cleanup Service Integration — Delete Cascades",
+      "session_id": "ses_1bab9286dffeLLCpb0fdUpoBHp",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-20T12:10:21.000Z"
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** — `oracle`",
+      "session_id": "ses_1baad1c54ffeFlMXevrFCzDt6S",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-20T12:20:22.619Z"
+    },
+    "final-wave:f3": {
+      "task_key": "final-wave:f3",
+      "task_label": "F3",
+      "task_title": "**Real Manual QA** — `unspecified-high` (+ `playwright` skill)",
+      "session_id": "ses_1baa1106cffeGxOQe0bsJXxcW0",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-20T12:35:05.690Z"
+    }
+  }
+}

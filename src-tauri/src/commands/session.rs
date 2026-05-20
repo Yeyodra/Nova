@@ -1,6 +1,11 @@
 use tauri::State;
 
-use crate::{error::AppResult, models::Session, services::session_service, state::AppState};
+use crate::{
+    error::AppResult,
+    models::Session,
+    services::{cleanup_service, session_service},
+    state::AppState,
+};
 
 #[tauri::command]
 pub async fn create_session(
@@ -21,6 +26,8 @@ pub async fn list_sessions(
 
 #[tauri::command]
 pub async fn delete_session(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    // Clean up attachment files before DB cascade deletes the records
+    cleanup_service::delete_session_attachments(state.pool(), &id).await?;
     session_service::delete_session(state.pool(), &id).await
 }
 

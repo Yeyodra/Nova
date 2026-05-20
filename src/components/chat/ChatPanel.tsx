@@ -1,24 +1,18 @@
 import React, { useEffect, useRef, useCallback } from 'react';
-import { Sparkle, PencilLine, GraduationCap, Code, Briefcase, Lightning } from '@phosphor-icons/react';
+import { Robot } from '@phosphor-icons/react';
 import { useChatStore } from '@/stores/useChatStore';
 import { useAgentStore } from '@/stores/useAgentStore';
+import { useFileStore } from '@/stores/useFileStore';
 import { ChatMessage } from './ChatMessage';
 import { StreamingMessage } from './StreamingMessage';
 import { AgentRunCard } from './AgentRunCard';
+import { DragDropZone } from './DragDropZone';
 import { Message, AgentRunWithTools } from '@/types';
 import { cn } from '@/lib/utils';
 
 interface ChatPanelProps {
   onChipClick?: (text: string) => void;
 }
-
-const QUICK_CHIPS = [
-  { icon: PencilLine, label: 'Write', prompt: 'Help me write ' },
-  { icon: GraduationCap, label: 'Learn', prompt: 'Explain how ' },
-  { icon: Code, label: 'Code', prompt: 'Write code to ' },
-  { icon: Briefcase, label: 'Personal', prompt: 'Help me with ' },
-  { icon: Lightning, label: 'Brainstorm', prompt: 'Brainstorm ideas for ' },
-];
 
 export const ChatPanel: React.FC<ChatPanelProps> = ({ onChipClick }) => {
   const { messages, isStreaming, streamingText } = useChatStore();
@@ -27,6 +21,23 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onChipClick }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const userScrolledUp = useRef(false);
   const isAutoScrolling = useRef(false);
+
+  const handleFilesDropped = useCallback((files: File[]) => {
+    const { addFile } = useFileStore.getState();
+    for (const file of files) {
+      const id = crypto.randomUUID();
+      const previewUrl = URL.createObjectURL(file);
+      addFile({
+        id,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type || 'application/octet-stream',
+        filePath: '',
+        previewUrl,
+        status: 'pending',
+      });
+    }
+  }, []);
 
   const scrollToBottom = useCallback(() => {
     const el = scrollRef.current;
@@ -77,34 +88,17 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onChipClick }) => {
 
   if (isEmpty) {
     return (
-      <div className="flex-1 flex flex-col items-center pt-[12vh] text-center p-8">
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[var(--surface-2)] to-[var(--surface-3)] border border-[var(--border)] mb-6 flex items-center justify-center">
-          <Sparkle size={26} weight="duotone" className="text-[var(--accent)]" />
+      <DragDropZone onFilesDropped={handleFilesDropped}>
+        <div className="flex-1 flex flex-col items-center justify-center p-8">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-full bg-[var(--fill-tertiary)] flex items-center justify-center">
+              <Robot size={22} weight="duotone" className="text-[var(--text-muted)]" />
+            </div>
+            <span className="text-lg font-semibold text-[var(--text)]">enowX Coder</span>
+          </div>
+          <p className="text-[14px] text-[var(--text-muted)] mb-1">What can I help you with today?</p>
         </div>
-        <h2 className="text-2xl font-bold mb-2 tracking-tight">Welcome Back!</h2>
-        <p className="text-sm text-[var(--text-muted)] mb-8 max-w-sm">
-          What would you like to work on today?
-        </p>
-
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          {QUICK_CHIPS.map((chip) => (
-            <button
-              key={chip.label}
-              onClick={() => onChipClick?.(chip.prompt)}
-              className={cn(
-                'flex items-center gap-2 px-4 py-2 rounded-full',
-                'border border-[var(--border)] bg-[var(--surface-2)]/50',
-                'text-xs text-[var(--text-muted)] font-medium',
-                'hover:bg-[var(--hover-bg-strong)] hover:text-[var(--text)] hover:border-[var(--border-strong)]',
-                'transition-all duration-200 active:scale-95'
-              )}
-            >
-              <chip.icon size={14} weight="duotone" />
-              {chip.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      </DragDropZone>
     );
   }
 
@@ -115,29 +109,31 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ onChipClick }) => {
   ].sort((a, b) => a.date - b.date);
 
   return (
-    <div className="flex-1 relative overflow-hidden min-h-0">
-      <div
-        ref={scrollRef}
-        onScroll={handleScroll}
-        className="h-full overflow-y-auto custom-scrollbar py-6"
-      >
-        <div className="max-w-3xl mx-auto w-full px-4 flex flex-col gap-6">
-          {combinedItems.map((item) => {
-            if (item.type === 'message') {
-              const message = item.data as Message;
-              return <ChatMessage key={message.id} message={message} />;
-            }
-            return <AgentRunCard key={item.data.id} run={item.data as AgentRunWithTools} />;
-          })}
-          <StreamingMessage />
-          <div ref={bottomRef} />
+    <DragDropZone onFilesDropped={handleFilesDropped}>
+      <div className="flex-1 relative overflow-hidden min-h-0">
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          className="h-full overflow-y-auto custom-scrollbar py-6"
+        >
+          <div className="max-w-3xl mx-auto w-full px-4 flex flex-col gap-6">
+            {combinedItems.map((item) => {
+              if (item.type === 'message') {
+                const message = item.data as Message;
+                return <ChatMessage key={message.id} message={message} />;
+              }
+              return <AgentRunCard key={item.data.id} run={item.data as AgentRunWithTools} />;
+            })}
+            <StreamingMessage />
+            <div ref={bottomRef} />
+          </div>
         </div>
-      </div>
 
-      <div
-        className="absolute bottom-0 left-0 right-0 h-16 pointer-events-none"
-        style={{ background: 'linear-gradient(to bottom, transparent, var(--bg))' }}
-      />
-    </div>
+        <div
+          className="absolute bottom-0 left-0 right-0 h-16 pointer-events-none"
+          style={{ background: 'linear-gradient(to bottom, transparent, var(--bg))' }}
+        />
+      </div>
+    </DragDropZone>
   );
 };

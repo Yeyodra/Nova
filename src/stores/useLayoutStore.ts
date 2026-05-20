@@ -23,10 +23,12 @@ interface LayoutState {
   // Bottom panel
   bottomPanelOpen: boolean;
   bottomPanelHeight: number;
+  bottomPanelFullscreen: boolean;
   bottomPanel: PanelType;
   setBottomPanel: (panel: PanelType) => void;
   toggleBottomPanel: () => void;
   setBottomPanelHeight: (height: number) => void;
+  toggleBottomPanelFullscreen: () => void;
   
   // Editor
   editorVisible: boolean;
@@ -53,10 +55,12 @@ export const useLayoutStore = create<LayoutState>((set) => ({
   // Bottom panel (Terminal)
   bottomPanelOpen: false,
   bottomPanelHeight: 250,
+  bottomPanelFullscreen: false,
   bottomPanel: 'none',
   setBottomPanel: (panel) => set({ bottomPanel: panel, bottomPanelOpen: panel !== 'none' }),
   toggleBottomPanel: () => set((s) => ({ bottomPanelOpen: !s.bottomPanelOpen })),
   setBottomPanelHeight: (height) => set({ bottomPanelHeight: height }),
+  toggleBottomPanelFullscreen: () => set((s) => ({ bottomPanelFullscreen: !s.bottomPanelFullscreen })),
   
   // Editor
   editorVisible: false,

@@ -52,7 +52,19 @@ pub fn run() -> Result<(), AppError> {
             commands::agent::get_agent_config,
             commands::agent::upsert_agent_config,
             commands::agent::list_agent_configs,
-            commands::agent::agent_permission_response
+            commands::agent::agent_permission_response,
+            commands::terminal::create_terminal,
+            commands::terminal::write_terminal,
+            commands::terminal::resize_terminal,
+            commands::terminal::kill_terminal,
+            commands::terminal::open_terminal,
+            commands::terminal::get_available_shells,
+            commands::terminal::get_default_shell,
+            commands::terminal::set_default_shell,
+            commands::file::attach_files,
+            commands::file::remove_attachment,
+            commands::file::get_attachments_for_message,
+            commands::file::get_attachment_base64
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
@@ -92,6 +104,37 @@ pub fn run() -> Result<(), AppError> {
                 .map_err(|e| Box::new(AppError::Database(e)))?;
 
             app_handle.manage(app_state);
+            app_handle.manage(services::terminal_service::TerminalService::new());
+
+            // Background orphan cleanup — non-blocking, failures are logged and ignored
+            let cleanup_pool = app_handle.state::<AppState>().pool().clone();
+            let attachments_dir = data_dir.join("attachments");
+            std::thread::spawn(move || {
+                #[allow(clippy::disallowed_methods)]
+                let rt = tokio::runtime::Runtime::new().expect("failed to create cleanup runtime");
+                rt.block_on(async {
+                    if attachments_dir.exists() {
+                        match services::cleanup_service::cleanup_orphaned_files(
+                            &cleanup_pool,
+                            &attachments_dir,
+                        )
+                        .await
+                        {
+                            Ok(bytes) => {
+                                if bytes > 0 {
+                                    log::info!(
+                                        "Startup cleanup freed {} bytes of orphaned attachments",
+                                        bytes
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                log::warn!("Startup orphan cleanup failed: {e}");
+                            }
+                        }
+                    }
+                });
+            });
 
             Ok(())
         });

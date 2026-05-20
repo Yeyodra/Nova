@@ -14,12 +14,28 @@ export interface Session {
   updatedAt: string;
 }
 
-export interface Message {
+export type AttachmentStatus = 'pending' | 'processing' | 'ready' | 'error';
 
+export interface AttachmentItem {
+  id: string;
+  messageId?: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  filePath: string;
+  previewUrl?: string;
+  base64?: string;
+  extractedText?: string;
+  status?: AttachmentStatus;
+  error?: string;
+}
+
+export interface Message {
   id: string;
   sessionId: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  attachments?: AttachmentItem[];
   createdAt: string;
 }
 

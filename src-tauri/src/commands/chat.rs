@@ -1,23 +1,25 @@
 use tauri::ipc::Channel;
 use tauri::{AppHandle, State};
 
-use crate::{error::AppResult, models::Message, services::chat_service, state::AppState};
+use crate::{error::AppResult, models::MessageWithAttachments, services::chat_service, state::AppState};
 
 #[tauri::command]
 pub async fn get_messages(
     state: State<'_, AppState>,
     session_id: String,
-) -> AppResult<Vec<Message>> {
+) -> AppResult<Vec<MessageWithAttachments>> {
     chat_service::get_messages(state.pool(), &session_id).await
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn send_message(
     state: State<'_, AppState>,
     session_id: String,
     content: String,
     provider_id: Option<String>,
     model_id: Option<String>,
+    attachment_ids: Option<Vec<String>>,
     on_token: Channel<String>,
     app_handle: AppHandle,
 ) -> AppResult<()> {
@@ -29,6 +31,7 @@ pub async fn send_message(
         &content,
         provider_id.as_deref(),
         model_id.as_deref(),
+        attachment_ids.unwrap_or_default(),
         on_token,
         &app_handle,
         cancel_token,

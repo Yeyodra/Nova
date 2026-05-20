@@ -10,13 +10,18 @@ import { cn } from '@/lib/utils';
 import { generateId } from '@/lib/utils';
 import { Session } from '@/types';
 
-export const SessionList: React.FC = () => {
+interface SessionListProps {
+  searchQuery?: string;
+}
+
+export const SessionList: React.FC<SessionListProps> = ({ searchQuery = '' }) => {
   const { sessions, activeSessionId, setActiveSessionId, removeSession, addSession, setSessions } = useSessionStore();
-  const { projects, activeProjectId } = useProjectStore();
+  const { projects, activeProjectId, removeProject, setActiveProjectId } = useProjectStore();
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(() => {
     return new Set(activeProjectId ? [activeProjectId] : []);
   });
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [deleteProjectTarget, setDeleteProjectTarget] = useState<string | null>(null);
 
   useEffect(() => {
     if (!activeProjectId) return;
@@ -77,29 +82,69 @@ export const SessionList: React.FC = () => {
     }
   };
 
+  const handleDeleteProject = (e: React.MouseEvent, projectId: string) => {
+    e.stopPropagation();
+    setDeleteProjectTarget(projectId);
+  };
+
+  const confirmDeleteProject = async () => {
+    if (!deleteProjectTarget) return;
+    const projectId = deleteProjectTarget;
+    setDeleteProjectTarget(null);
+
+    // Remove all sessions belonging to this project
+    const projectSessions = sessions.filter((s) => s.projectId === projectId);
+    for (const session of projectSessions) {
+      removeSession(session.id);
+    }
+
+    // If active project is being deleted, clear state
+    if (activeProjectId === projectId) {
+      setActiveProjectId(null as unknown as string);
+      useChatStore.getState().setMessages([]);
+      useAgentStore.getState().setAgentRuns([]);
+    }
+
+    removeProject(projectId);
+
+    try {
+      await invoke('delete_project', { id: projectId });
+    } catch (error) {
+      console.error('Failed to persist project deletion:', error);
+    }
+  };
+
   if (projects.length === 0) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
-        <FolderSimple size={28} weight="duotone" className="text-[var(--border)] mb-2" />
-        <p className="text-xs text-[var(--text-subtle)]">Open a folder to start</p>
+        <FolderSimple size={28} weight="duotone" className="text-[var(--text-subtle)] mb-2" />
+        <p className="text-[12px] text-[var(--text-subtle)]">Open a folder to start</p>
       </div>
     );
   }
 
+  const query = searchQuery.toLowerCase().trim();
+
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar py-1">
+    <div className="flex-1 overflow-y-auto custom-scrollbar px-2 py-1">
       {projects.map((project) => {
-        const projectSessions = sessions.filter((s) => s.projectId === project.id);
+        const projectSessions = sessions
+          .filter((s) => s.projectId === project.id)
+          .filter((s) => !query || s.title.toLowerCase().includes(query));
         const isExpanded = expandedProjects.has(project.id);
 
+        // Hide project if search active and no matching sessions
+        if (query && projectSessions.length === 0) return null;
+
         return (
-          <div key={project.id}>
+          <div key={project.id} className="mb-1">
             <div
-              className="group flex items-center gap-1.5 px-2 py-1.5 mx-1 rounded-md cursor-pointer hover:bg-[var(--hover-bg)] transition-colors"
+              className="group flex items-center gap-2 px-3 h-9 rounded-[var(--radius)] cursor-pointer hover:bg-[var(--fill-tertiary)] transition-colors"
               onClick={() => toggleProject(project.id)}
+              title={project.name}
             >
               <CaretRight
-                size={11}
+                size={12}
                 weight="bold"
                 className={cn(
                   'text-[var(--text-subtle)] transition-transform shrink-0',
@@ -112,35 +157,42 @@ export const SessionList: React.FC = () => {
                 className="text-[var(--text-muted)] shrink-0"
               />
               <span className="text-[13px] font-medium text-[var(--text-muted)] truncate flex-1 group-hover:text-[var(--text)]">
-                {project.name}
+                {project.name.split(/[/\\]/).filter(Boolean).pop() ?? project.name}
               </span>
               <button
                 onClick={(e) => handleNewSession(e, project.id)}
-                className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-[var(--hover-bg-strong)] text-[var(--text-subtle)] hover:text-[var(--text)] transition-all"
+                className="opacity-0 group-hover:opacity-100 w-6 h-6 rounded-[var(--radius-sm)] flex items-center justify-center hover:bg-[var(--fill-secondary)] text-[var(--text-subtle)] hover:text-[var(--text)] transition-all"
                 title="New chat"
               >
-                <Plus size={12} />
+                <Plus size={13} />
+              </button>
+              <button
+                onClick={(e) => handleDeleteProject(e, project.id)}
+                className="opacity-0 group-hover:opacity-100 w-6 h-6 rounded-[var(--radius-sm)] flex items-center justify-center hover:bg-[var(--fill-secondary)] text-[var(--text-subtle)] hover:text-[var(--danger)] transition-all"
+                title="Delete project"
+              >
+                <Trash size={13} />
               </button>
             </div>
 
             {isExpanded && (
-              <div className="ml-4 border-l border-[var(--border)] pl-1 mb-1">
+              <div className="ml-3 pl-3 border-l border-[var(--fill-secondary)] mt-0.5 mb-1">
                 {projectSessions.length === 0 ? (
-                  <p className="text-[10px] text-[var(--text-subtle)] px-3 py-1.5">No chats yet</p>
+                  <p className="text-[11px] text-[var(--text-subtle)] px-3 py-2">No chats yet</p>
                 ) : (
                   projectSessions.map((session) => (
                     <div
                       key={session.id}
                       className={cn(
-                        'group flex items-center gap-2 px-2 py-1.5 mx-1 rounded-md cursor-pointer transition-colors text-[13px]',
+                        'group flex items-center gap-2.5 px-3 h-10 rounded-[var(--radius)] cursor-pointer transition-colors text-[13px]',
                         activeSessionId === session.id
-                          ? 'bg-[var(--hover-bg-strong)] text-[var(--text)]'
-                          : 'text-[var(--text-subtle)] hover:bg-[var(--hover-bg)] hover:text-[var(--text-muted)]'
+                          ? 'bg-[var(--fill-secondary)] text-[var(--text)]'
+                          : 'text-[var(--text-muted)] hover:bg-[var(--fill-tertiary)] hover:text-[var(--text)]'
                       )}
                       onClick={() => setActiveSessionId(session.id)}
                     >
                       <ChatCircleText
-                        size={15}
+                        size={16}
                         weight={activeSessionId === session.id ? 'fill' : 'regular'}
                         className="shrink-0"
                       />
@@ -149,9 +201,10 @@ export const SessionList: React.FC = () => {
                         onClick={(e) => {
                           void handleDeleteSession(e, session.id);
                         }}
-                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-[var(--hover-bg-strong)] transition-all"
+                        className="opacity-0 group-hover:opacity-100 w-6 h-6 rounded-[var(--radius-sm)] flex items-center justify-center hover:bg-[var(--fill-secondary)] transition-all text-[var(--text-subtle)] hover:text-[var(--danger)]"
+                        title="Delete chat"
                       >
-                        <Trash size={11} />
+                        <Trash size={12} />
                       </button>
                     </div>
                   ))
@@ -171,6 +224,17 @@ export const SessionList: React.FC = () => {
         danger
         onConfirm={() => void confirmDeleteSession()}
         onCancel={() => setDeleteTarget(null)}
+      />
+
+      <ConfirmDialog
+        open={deleteProjectTarget !== null}
+        title="Delete Project"
+        message={`Are you sure you want to delete "${(projects.find(p => p.id === deleteProjectTarget)?.name ?? '').split(/[/\\]/).filter(Boolean).pop() ?? 'this project'}" and all its chats? This action cannot be undone.`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        danger
+        onConfirm={() => void confirmDeleteProject()}
+        onCancel={() => setDeleteProjectTarget(null)}
       />
     </div>
   );

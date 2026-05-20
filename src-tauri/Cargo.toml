@@ -35,9 +35,19 @@ walkdir = "2"
 globset = "0.4"
 regex = "1"
 urlencoding = "2"
+portable-pty = "0.8"
+which = "7"
+image = "0.25"
+pdf-extract = "0.7"
+base64 = "0.22"
+mime_guess = "2"
+sha2 = "0.10"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
 
 [profile.release]
 opt-level = 3

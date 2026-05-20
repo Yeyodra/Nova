@@ -5,10 +5,11 @@ import { useProjectStore } from '@/stores/useProjectStore';
 
 import { useChatStore } from '@/stores/useChatStore';
 import { useAgentStore } from '@/stores/useAgentStore';
-import { PencilSimple, DotsThreeVertical, Sun, Moon, Trash, Plus, Check, X, SidebarSimple, ChatCircle, PaintBrush } from '@phosphor-icons/react';
+import { PencilSimple, DotsThreeVertical, Sun, Moon, Trash, Plus, Check, X, SidebarSimple, ChatCircle, PaintBrush, Terminal } from '@phosphor-icons/react';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/useUIStore';
+import { useLayoutStore } from '@/stores/useLayoutStore';
 import { Session } from '@/types';
 import { generateId } from '@/lib/utils';
 
@@ -240,6 +241,25 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({ onToggleLeftSidebar }) =
         </div>
         
         <div className="flex items-center gap-1">
+          <button
+            onClick={() => {
+              const state = useLayoutStore.getState();
+              if (state.bottomPanelOpen) {
+                state.toggleBottomPanel();
+              } else {
+                state.setBottomPanel('terminal');
+              }
+            }}
+            className={cn(
+              'p-2 rounded-lg hover:bg-[var(--hover-bg)] transition-colors',
+              useLayoutStore.getState().bottomPanelOpen
+                ? 'text-[var(--accent)]'
+                : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+            )}
+            title="Toggle Terminal (Ctrl+`)"
+          >
+            <Terminal size={20} />
+          </button>
           <button
             onClick={toggleTheme}
             className="p-2 rounded-lg hover:bg-[var(--hover-bg)] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"

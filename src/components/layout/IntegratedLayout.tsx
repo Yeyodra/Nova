@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useLayoutStore } from '@/stores/useLayoutStore';
+import { TerminalView } from '@/components/terminal/TerminalView';
 
 // Placeholder components - will be replaced when PRs are merged
 const FileTreePlaceholder = () => (
@@ -106,8 +107,12 @@ export function IntegratedLayout({ children }: { children: React.ReactNode }) {
       // Cmd/Ctrl+` - Terminal
       if (isMod && e.key === '`') {
         e.preventDefault();
-        setBottomPanel('terminal');
-        toggleBottomPanel();
+        const state = useLayoutStore.getState();
+        if (state.bottomPanelOpen && state.bottomPanel === 'terminal') {
+          state.toggleBottomPanel();
+        } else {
+          state.setBottomPanel('terminal');
+        }
         return;
       }
 
@@ -148,7 +153,7 @@ export function IntegratedLayout({ children }: { children: React.ReactNode }) {
   const renderBottomPanel = () => {
     switch (bottomPanel) {
       case 'terminal':
-        return <TerminalPlaceholder />;
+        return <TerminalView />;
       default:
         return null;
     }
@@ -188,11 +193,14 @@ export function IntegratedLayout({ children }: { children: React.ReactNode }) {
         </button>
         <button
           onClick={() => {
-            setBottomPanel(bottomPanel === 'terminal' ? 'none' : 'terminal');
-            toggleBottomPanel();
+            if (bottomPanelOpen && bottomPanel === 'terminal') {
+              toggleBottomPanel();
+            } else {
+              setBottomPanel('terminal');
+            }
           }}
           className="px-2 py-1 text-xs rounded hover:bg-[var(--surface-hover)]"
-          title="Terminal (Cmd+`)"
+          title="Terminal (Ctrl+`)"
         >
           💻 Terminal
         </button>
