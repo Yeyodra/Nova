@@ -1,5 +1,18 @@
 import React, { useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
+import { MarkdownCodeBlock } from '@/components/chat/MarkdownCodeBlock';
+import { fixMarkdownTables } from '@/lib/utils';
 import type { CompareColumn as CompareColumnType } from '@/types/compare';
+
+const markdownComponents = {
+  code: MarkdownCodeBlock as React.ComponentType<React.HTMLAttributes<HTMLElement>>,
+  pre: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+  p: ({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) => (
+    <div className="mb-4 last:mb-0" {...props}>{children}</div>
+  ),
+};
 
 export interface CompareColumnProps {
   column: CompareColumnType;
@@ -52,16 +65,28 @@ export const CompareColumn: React.FC<CompareColumnProps> = ({
               </div>
             </div>
           ) : (
-            <div key={msg.id || idx} className="text-[13px] text-[var(--text)] whitespace-pre-wrap leading-relaxed">
-              {msg.content}
+            <div key={msg.id || idx} className="text-[13px] text-[var(--text)] leading-relaxed prose prose-invert prose-sm max-w-none">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeHighlight]}
+                components={markdownComponents}
+              >
+                {fixMarkdownTables(msg.content)}
+              </ReactMarkdown>
             </div>
           )
         ))}
 
         {/* Currently streaming response */}
         {isStreaming && streamingText && (
-          <div className="text-[13px] text-[var(--text)] whitespace-pre-wrap leading-relaxed">
-            {streamingText}
+          <div className="text-[13px] text-[var(--text)] leading-relaxed prose prose-invert prose-sm max-w-none">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeHighlight]}
+              components={markdownComponents}
+            >
+              {fixMarkdownTables(streamingText)}
+            </ReactMarkdown>
           </div>
         )}
 
