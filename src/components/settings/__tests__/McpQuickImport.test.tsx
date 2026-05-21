@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { McpQuickImport } from '../McpQuickImport';
 
@@ -117,7 +117,6 @@ describe('McpQuickImport', () => {
   it('calls onClose when close button clicked', () => {
     renderComponent();
     // The X button is the only button initially besides Parse
-    const closeButton = screen.getByRole('button', { name: '' });
     // Actually find by the X icon's parent button — use getAllByRole and find the close one
     const buttons = screen.getAllByRole('button');
     // First button in header is close

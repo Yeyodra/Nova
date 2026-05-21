@@ -11,11 +11,6 @@ interface ClaudeDesktopServerConfig {
   url?: string;
 }
 
-/** Top-level Claude Desktop config shape */
-interface ClaudeDesktopConfig {
-  mcpServers: Record<string, ClaudeDesktopServerConfig>;
-}
-
 interface McpQuickImportProps {
   onImport: (servers: Partial<McpServer>[]) => void;
   onClose: () => void;

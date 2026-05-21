@@ -5,7 +5,6 @@ import {
   Plus,
   Trash,
   PencilSimple,
-  Circle,
   ToggleLeft,
   ToggleRight,
   Plugs,
