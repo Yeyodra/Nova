@@ -180,9 +180,27 @@ pub async fn send_compare(
     models: Vec<CompareModelConfig>,
     channels: Vec<Channel<String>>,
     cancel_token: CancellationToken,
+    attachment_ids: Vec<String>,
 ) -> AppResult<()> {
     // Save user message first
     save_user_message(db, session_id, content).await?;
+
+    // Fetch attachments if any
+    let attachments: Vec<Attachment> = if attachment_ids.is_empty() {
+        Vec::new()
+    } else {
+        let placeholders: String = attachment_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let query = format!(
+            "SELECT id, message_id, file_name, file_size, mime_type, file_path, extracted_text, created_at \
+             FROM attachments WHERE id IN ({})",
+            placeholders
+        );
+        let mut q = sqlx::query_as::<_, Attachment>(&query);
+        for id in &attachment_ids {
+            q = q.bind(id);
+        }
+        q.fetch_all(db).await.unwrap_or_default()
+    };
 
     // Fetch all previous messages for this session to build per-model conversation history
     let all_messages = get_messages(db, session_id).await?;
@@ -194,7 +212,7 @@ pub async fn send_compare(
         let session_id = session_id.to_string();
         let cancel = cancel_token.clone();
         let channel = channels[i].clone();
-        let empty_attachments: Vec<Attachment> = vec![];
+        let attachments_clone = attachments.clone();
 
         // Build per-model history: all user messages + this model's assistant messages, interleaved
         let user_messages: Vec<&CompareMessage> = all_messages
@@ -234,7 +252,7 @@ pub async fn send_compare(
                     &session_id,
                     &model_config,
                     history,
-                    &empty_attachments,
+                    &attachments_clone,
                     &channel,
                     &cancel,
                 ),

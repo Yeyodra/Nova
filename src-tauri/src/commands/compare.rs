@@ -46,6 +46,7 @@ pub async fn send_compare_message(
     session_id: String,
     content: String,
     model_configs: Vec<CompareModelConfig>,
+    attachment_ids: Option<Vec<String>>,
     on_token: Channel<String>,
 ) -> AppResult<()> {
     let cancel_token = state.cancellations.register(format!("compare:{session_id}"));
@@ -61,6 +62,7 @@ pub async fn send_compare_message(
         model_configs,
         channels,
         cancel_token,
+        attachment_ids.unwrap_or_default(),
     )
     .await;
 

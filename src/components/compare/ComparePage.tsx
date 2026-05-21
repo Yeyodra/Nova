@@ -13,7 +13,7 @@ export const ComparePage: React.FC = () => {
   const [isSending, setIsSending] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
 
-  const handleSend = async (content: string, _attachmentIds?: string[]) => {
+  const handleSend = async (content: string, attachmentIds?: string[]) => {
     if (selectedModelIds.length < 2) return;
     if (!content.trim()) return;
 
@@ -83,6 +83,7 @@ export const ComparePage: React.FC = () => {
         sessionId: currentSessionId,
         content,
         modelConfigs,
+        attachmentIds: attachmentIds ?? [],
         onToken,
       });
 
