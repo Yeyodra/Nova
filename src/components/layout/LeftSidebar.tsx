@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { ProjectSwitcher } from '@/components/sidebar/ProjectSwitcher';
 import { SessionList } from '@/components/sidebar/SessionList';
-import { CompareHistory } from '@/components/compare/CompareHistory';
-import { SidebarSimple, GearSix, MagnifyingGlass, CaretRight, Plus } from '@phosphor-icons/react';
+import { SidebarSimple, GearSix, MagnifyingGlass, CaretRight } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/useUIStore';
 import { useCompareStore } from '@/stores/useCompareStore';
@@ -13,7 +12,6 @@ export const LeftSidebar: React.FC = () => {
   const toggleLeftSidebar = useUIStore((s) => s.toggleLeftSidebar);
   const [searchQuery, setSearchQuery] = useState('');
   const [historyExpanded, setHistoryExpanded] = useState(true);
-  const [compareExpanded, setCompareExpanded] = useState(true);
 
   return (
     <aside className="h-full bg-[var(--surface)] flex flex-col w-[var(--sidebar-width-left)] shadow-[1px_0_2px_rgba(0,0,0,0.15)]">
@@ -74,40 +72,18 @@ export const LeftSidebar: React.FC = () => {
         <div className="flex-1" />
       )}
 
-      {/* Compare Section — collapsible */}
+      {/* Compare — simple clickable label */}
       <button
         type="button"
-        onClick={() => setCompareExpanded(!compareExpanded)}
+        onClick={() => {
+          useCompareStore.getState().setActiveCompareSession(null);
+          useCompareStore.getState().clearColumns();
+          setMainView('compare');
+        }}
         className="flex items-center gap-1.5 px-4 pt-1 pb-1.5 w-full text-left text-[11px] uppercase tracking-wider font-medium text-[var(--text-subtle)] hover:text-[var(--text-muted)] select-none transition-colors"
       >
-        <CaretRight
-          size={10}
-          weight="bold"
-          className={cn(
-            'transition-transform duration-200',
-            compareExpanded && 'rotate-90'
-          )}
-        />
         Compare
       </button>
-
-      {compareExpanded && (
-        <div className="px-3 pb-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              useCompareStore.getState().setActiveCompareSession(null);
-              useCompareStore.getState().clearColumns();
-              setMainView('compare');
-            }}
-            className="flex items-center gap-1.5 w-full px-3 py-1.5 rounded-[var(--radius)] text-[12px] text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--fill-tertiary)] transition-colors"
-          >
-            <Plus size={12} weight="bold" />
-            New Compare
-          </button>
-          <CompareHistory />
-        </div>
-      )}
 
       {/* Footer — Settings */}
       <div className="px-3 py-3 shrink-0">
