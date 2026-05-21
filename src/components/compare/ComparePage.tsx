@@ -13,13 +13,9 @@ export const ComparePage: React.FC = () => {
   const [isSending, setIsSending] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
 
-  const [lastPrompt, setLastPrompt] = useState<string | null>(null);
-
   const handleSend = async (content: string, _attachmentIds?: string[]) => {
     if (selectedModelIds.length < 2) return;
     if (!content.trim()) return;
-
-    setLastPrompt(content);
 
     const providers = useSettingsStore.getState().providers;
 
@@ -44,22 +40,36 @@ export const ComparePage: React.FC = () => {
       }
     }
 
-    // Initialize columns in streaming state
-    const initialColumns: CompareColumnType[] = selectedModelIds.map((compositeKey) => {
-      const [providerId, modelId] = compositeKey.split('::');
-      const provider = providers.find((p) => p.id === providerId);
-      return {
-        modelId,
-        providerId,
-        modelName: modelId,
-        providerName: provider?.name ?? providerId,
+    // Initialize columns if first message, otherwise reuse existing
+    const store = useCompareStore.getState();
+    if (store.columns.length === 0) {
+      const initialColumns: CompareColumnType[] = selectedModelIds.map((compositeKey) => {
+        const [providerId, modelId] = compositeKey.split('::');
+        const provider = providers.find((p) => p.id === providerId);
+        return {
+          modelId,
+          providerId,
+          modelName: modelId,
+          providerName: provider?.name ?? providerId,
+          isStreaming: false,
+          streamingText: '',
+          messages: [],
+          error: undefined,
+        };
+      });
+      useCompareStore.getState().setColumns(initialColumns);
+    }
+
+    // Append user message to all columns and set streaming state
+    useCompareStore.getState().appendUserMessage(content);
+    useCompareStore.getState().setColumns(
+      useCompareStore.getState().columns.map((col) => ({
+        ...col,
         isStreaming: true,
         streamingText: '',
-        messages: [],
         error: undefined,
-      };
-    });
-    useCompareStore.getState().setColumns(initialColumns);
+      }))
+    );
     setIsSending(true);
 
     // Set up channel (tokens are interleaved — v1 uses fetch-after-complete)
@@ -82,26 +92,32 @@ export const ComparePage: React.FC = () => {
         { sessionId: currentSessionId }
       );
 
-      // Group assistant messages by modelId into columns
+      // Get assistant messages and find the latest one per model
       const assistantMessages = messages.filter((m) => m.role === 'assistant');
-      const updatedColumns: CompareColumnType[] = selectedModelIds.map((compositeKey) => {
-        const [providerId, modelId] = compositeKey.split('::');
-        const provider = providers.find((p) => p.id === providerId);
-        const colMessages = assistantMessages.filter((m) => m.modelId === modelId);
-        const hasError = colMessages.length === 0;
-        const lastMessage = colMessages[colMessages.length - 1];
-        return {
-          modelId,
-          providerId,
-          modelName: modelId,
-          providerName: provider?.name ?? providerId,
-          isStreaming: false,
-          streamingText: lastMessage?.content ?? '',
-          messages: [],
-          error: hasError ? 'Model failed to respond. Check API key and connectivity.' : undefined,
-        };
-      });
-      useCompareStore.getState().setColumns(updatedColumns);
+      const cols = useCompareStore.getState().columns;
+      useCompareStore.getState().setColumns(
+        cols.map((col) => {
+          const colMessages = assistantMessages.filter((m) => m.modelId === col.modelId);
+          const latestMsg = colMessages[colMessages.length - 1];
+          if (latestMsg) {
+            return {
+              ...col,
+              isStreaming: false,
+              streamingText: '',
+              messages: [...col.messages, {
+                id: crypto.randomUUID(),
+                compareSessionId: currentSessionId ?? '',
+                role: 'assistant' as const,
+                content: latestMsg.content,
+                modelId: col.modelId,
+                providerId: col.providerId,
+                createdAt: new Date().toISOString(),
+              }],
+            };
+          }
+          return { ...col, isStreaming: false, error: 'Model failed to respond. Check API key and connectivity.' };
+        })
+      );
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       const cols = useCompareStore.getState().columns;
@@ -153,7 +169,6 @@ export const ComparePage: React.FC = () => {
             <CompareColumn
               key={col.providerId + '::' + col.modelId}
               column={col}
-              userPrompt={lastPrompt ?? undefined}
               onUseModel={handleUseModel}
               onRetry={handleRetry}
             />

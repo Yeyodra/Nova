@@ -184,24 +184,47 @@ pub async fn send_compare(
     // Save user message first
     save_user_message(db, session_id, content).await?;
 
-    // Build message history for the LLM call (just the user message)
-    let history = vec![Message {
-        id: Uuid::new_v4().to_string(),
-        session_id: session_id.to_string(),
-        role: "user".to_string(),
-        content: content.to_string(),
-        created_at: now_rfc3339(),
-    }];
+    // Fetch all previous messages for this session to build per-model conversation history
+    let all_messages = get_messages(db, session_id).await?;
 
     let mut join_set: JoinSet<()> = JoinSet::new();
 
     for (i, model_config) in models.into_iter().enumerate() {
         let db = db.clone();
         let session_id = session_id.to_string();
-        let history = history.clone();
         let cancel = cancel_token.clone();
         let channel = channels[i].clone();
         let empty_attachments: Vec<Attachment> = vec![];
+
+        // Build per-model history: all user messages + this model's assistant messages, interleaved
+        let user_messages: Vec<&CompareMessage> = all_messages
+            .iter()
+            .filter(|m| m.role == "user")
+            .collect();
+        let model_assistant_messages: Vec<&CompareMessage> = all_messages
+            .iter()
+            .filter(|m| m.role == "assistant" && m.model_id.as_deref() == Some(&model_config.model_id))
+            .collect();
+
+        let mut history: Vec<Message> = Vec::new();
+        for (idx, user_msg) in user_messages.iter().enumerate() {
+            history.push(Message {
+                id: user_msg.id.clone(),
+                session_id: session_id.clone(),
+                role: "user".to_string(),
+                content: user_msg.content.clone(),
+                created_at: user_msg.created_at.clone(),
+            });
+            if let Some(asst) = model_assistant_messages.get(idx) {
+                history.push(Message {
+                    id: asst.id.clone(),
+                    session_id: session_id.clone(),
+                    role: "assistant".to_string(),
+                    content: asst.content.clone(),
+                    created_at: asst.created_at.clone(),
+                });
+            }
+        }
 
         join_set.spawn(async move {
             let result = timeout(

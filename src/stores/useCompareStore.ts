@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { CompareSession, CompareColumn } from '@/types/compare';
+import type { CompareSession, CompareColumn, CompareMessage } from '@/types/compare';
 
 const MAX_MODELS = 3;
 
@@ -28,6 +28,8 @@ interface CompareStoreState {
   appendColumnToken: (modelId: string, token: string) => void;
   setColumnError: (modelId: string, error: string) => void;
   setColumnStreaming: (modelId: string, streaming: boolean) => void;
+  appendUserMessage: (content: string) => void;
+  appendAssistantMessage: (modelId: string, content: string) => void;
   clearColumns: () => void;
 
   isAnyStreaming: () => boolean;
@@ -104,6 +106,39 @@ export const useCompareStore = create<CompareStoreState>((set, get) => ({
     set((state) => ({
       columns: state.columns.map((col) =>
         col.modelId === modelId ? { ...col, isStreaming: streaming } : col
+      ),
+    }));
+  },
+
+  appendUserMessage: (content) => {
+    const msg: CompareMessage = {
+      id: crypto.randomUUID(),
+      compareSessionId: '',
+      role: 'user',
+      content,
+      createdAt: new Date().toISOString(),
+    };
+    set((state) => ({
+      columns: state.columns.map((col) => ({
+        ...col,
+        messages: [...col.messages, msg],
+      })),
+    }));
+  },
+
+  appendAssistantMessage: (modelId, content) => {
+    const msg: CompareMessage = {
+      id: crypto.randomUUID(),
+      compareSessionId: '',
+      role: 'assistant',
+      content,
+      createdAt: new Date().toISOString(),
+    };
+    set((state) => ({
+      columns: state.columns.map((col) =>
+        col.modelId === modelId
+          ? { ...col, messages: [...col.messages, msg] }
+          : col
       ),
     }));
   },

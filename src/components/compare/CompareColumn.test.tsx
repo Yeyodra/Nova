@@ -43,7 +43,7 @@ describe('CompareColumn', () => {
     const onUseModel = vi.fn();
     render(
       <CompareColumn
-        column={makeColumn({ streamingText: 'Some response text' })}
+        column={makeColumn({ messages: [{ id: '1', compareSessionId: '', role: 'assistant', content: 'Some response text', createdAt: '' }] })}
         onUseModel={onUseModel}
       />,
     );
@@ -52,8 +52,8 @@ describe('CompareColumn', () => {
     expect(onUseModel).toHaveBeenCalledWith('gpt-4o', 'openai');
   });
 
-  it('shows waiting state when idle', () => {
-    render(<CompareColumn column={makeColumn()} />);
+  it('shows waiting state when streaming with no text', () => {
+    render(<CompareColumn column={makeColumn({ isStreaming: true })} />);
     expect(screen.getByText('Waiting for response...')).toBeInTheDocument();
   });
 

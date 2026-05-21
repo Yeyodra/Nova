@@ -1,22 +1,28 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import type { CompareColumn as CompareColumnType } from '@/types/compare';
 
 export interface CompareColumnProps {
   column: CompareColumnType;
-  userPrompt?: string;
   onUseModel?: (modelId: string, providerId: string) => void;
   onRetry?: (providerId: string) => void;
 }
 
 export const CompareColumn: React.FC<CompareColumnProps> = ({
   column,
-  userPrompt,
   onUseModel,
   onRetry,
 }) => {
-  const { modelId, providerId, modelName, providerName, isStreaming, streamingText, error } = column;
-  const hasContent = streamingText.length > 0;
-  const showFooter = !isStreaming && hasContent;
+  const { modelId, providerId, modelName, providerName, isStreaming, streamingText, messages, error } = column;
+  const hasMessages = messages.length > 0;
+  const showFooter = !isStreaming && hasMessages;
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when messages change or streaming
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, isStreaming, streamingText]);
 
   return (
     <div className="flex-1 flex flex-col h-full border-r border-[var(--border)] last:border-r-0">
@@ -36,19 +42,38 @@ export const CompareColumn: React.FC<CompareColumnProps> = ({
         )}
       </div>
 
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto px-4 py-3">
-        {/* User prompt bubble */}
-        {userPrompt && (
-          <div className="mb-3 flex justify-end">
-            <div className="bg-[var(--fill-quaternary)] rounded-[var(--radius)] px-3 py-2 max-w-[85%]">
-              <p className="text-[13px] text-[var(--text)] whitespace-pre-wrap">{userPrompt}</p>
+      {/* Body — scrollable message list */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+        {messages.map((msg, idx) => (
+          msg.role === 'user' ? (
+            <div key={msg.id || idx} className="flex justify-end">
+              <div className="bg-[var(--fill-quaternary)] rounded-[var(--radius)] px-3 py-2 max-w-[85%]">
+                <p className="text-[13px] text-[var(--text)] whitespace-pre-wrap">{msg.content}</p>
+              </div>
             </div>
+          ) : (
+            <div key={msg.id || idx} className="text-[13px] text-[var(--text)] whitespace-pre-wrap leading-relaxed">
+              {msg.content}
+            </div>
+          )
+        ))}
+
+        {/* Currently streaming response */}
+        {isStreaming && streamingText && (
+          <div className="text-[13px] text-[var(--text)] whitespace-pre-wrap leading-relaxed">
+            {streamingText}
           </div>
         )}
 
-        {/* AI response */}
-        {error ? (
+        {/* Waiting indicator */}
+        {isStreaming && !streamingText && (
+          <div className="text-[12px] text-[var(--text-muted)] italic">
+            Waiting for response...
+          </div>
+        )}
+
+        {/* Error state */}
+        {error && (
           <div
             className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-[var(--radius)] p-3 text-[12px]"
             data-testid="error-banner"
@@ -64,14 +89,6 @@ export const CompareColumn: React.FC<CompareColumnProps> = ({
                 Retry
               </button>
             )}
-          </div>
-        ) : hasContent ? (
-          <div className="text-[13px] text-[var(--text)] whitespace-pre-wrap leading-relaxed">
-            {streamingText}
-          </div>
-        ) : (
-          <div className="text-[12px] text-[var(--text-muted)] italic">
-            Waiting for response...
           </div>
         )}
       </div>
