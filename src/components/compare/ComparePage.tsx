@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { ModelSelector } from './ModelSelector';
 import { CompareColumn } from './CompareColumn';
@@ -12,6 +12,11 @@ export const ComparePage: React.FC = () => {
   const selectedModelIds = useCompareStore((s) => s.selectedModelIds);
   const [isSending, setIsSending] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+
+  // Reset session when model selection changes (columns get cleared by store)
+  useEffect(() => {
+    setSessionId(null);
+  }, [selectedModelIds]);
 
   const handleSend = async (content: string, attachmentIds?: string[]) => {
     if (selectedModelIds.length < 2) return;
