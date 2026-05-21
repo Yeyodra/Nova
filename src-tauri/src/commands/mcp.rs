@@ -139,23 +139,13 @@ pub async fn test_mcp_connection(
     mcp_service: State<'_, Arc<McpService>>,
     config: McpServerConfig,
 ) -> AppResult<Vec<McpTool>> {
-    log::info!("[mcp-test] test_mcp_connection called");
-    log::info!("[mcp-test] config.id={}, config.name={}, config.transport_type={}", config.id, config.name, config.transport_type);
-    log::info!("[mcp-test] config.command={:?}, config.args={:?}", config.command, config.args);
-    log::info!("[mcp-test] config.env_vars={:?}", config.env_vars);
-
     // Connect temporarily
     mcp_service.connect(&config).await?;
-    log::info!("[mcp-test] connect succeeded for id={}", config.id);
 
     // List tools
     let tools = match mcp_service.list_tools(&config.id).await {
-        Ok(tools) => {
-            log::info!("[mcp-test] list_tools returned {} tools", tools.len());
-            tools
-        }
+        Ok(tools) => tools,
         Err(e) => {
-            log::error!("[mcp-test] list_tools failed: {:?}", e);
             // Cleanup on failure
             let _ = mcp_service.disconnect(&config.id).await;
             return Err(e.into());
@@ -164,7 +154,6 @@ pub async fn test_mcp_connection(
 
     // Disconnect — this was just a test
     let _ = mcp_service.disconnect(&config.id).await;
-    log::info!("[mcp-test] disconnected, returning {} tools", tools.len());
 
     Ok(tools)
 }

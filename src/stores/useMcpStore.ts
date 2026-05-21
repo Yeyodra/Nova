@@ -149,16 +149,13 @@ export const useMcpStore = create<McpState>((set) => ({
   testConnection: async (config) => {
     try {
       const serialized = serializeConfigForBackend(config);
-      console.log('[MCP-DEBUG] invoke test_mcp_connection with:', JSON.stringify(serialized, null, 2));
       const tools = await invoke<McpTool[]>('test_mcp_connection', { config: serialized });
-      console.log('[MCP-DEBUG] invoke succeeded, tools:', tools);
       set((state) => ({
         testResult: { ...state.testResult, [config.id ?? 'new']: { success: true, tools } },
       }));
       return tools;
     } catch (e) {
       const errorMsg = String(e);
-      console.error('[MCP-DEBUG] invoke FAILED:', e, JSON.stringify(e));
       set((state) => ({
         testResult: { ...state.testResult, [config.id ?? 'new']: { success: false, error: errorMsg } },
       }));

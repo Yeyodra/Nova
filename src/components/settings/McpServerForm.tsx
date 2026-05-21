@@ -125,13 +125,9 @@ export const McpServerForm: React.FC<McpServerFormProps> = ({ server, onClose, o
     setTesting(true);
     setTestResult(null);
     try {
-      const formData = buildFormData();
-      console.log('[MCP-DEBUG] buildFormData:', JSON.stringify(formData, null, 2));
-      const tools = await testConnection(formData);
-      console.log('[MCP-DEBUG] testConnection returned:', tools.length, 'tools', tools);
+      const tools = await testConnection(buildFormData());
       setTestResult({ success: true, message: `Connected! Found ${tools.length} tool${tools.length === 1 ? '' : 's'}` });
     } catch (e) {
-      console.error('[MCP-DEBUG] handleTest error:', e);
       setTestResult({ success: false, message: String(e) });
     } finally {
       setTesting(false);
