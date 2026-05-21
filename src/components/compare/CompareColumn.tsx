@@ -3,12 +3,14 @@ import type { CompareColumn as CompareColumnType } from '@/types/compare';
 
 export interface CompareColumnProps {
   column: CompareColumnType;
+  userPrompt?: string;
   onUseModel?: (modelId: string, providerId: string) => void;
   onRetry?: (providerId: string) => void;
 }
 
 export const CompareColumn: React.FC<CompareColumnProps> = ({
   column,
+  userPrompt,
   onUseModel,
   onRetry,
 }) => {
@@ -36,6 +38,16 @@ export const CompareColumn: React.FC<CompareColumnProps> = ({
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-4 py-3">
+        {/* User prompt bubble */}
+        {userPrompt && (
+          <div className="mb-3 flex justify-end">
+            <div className="bg-[var(--fill-quaternary)] rounded-[var(--radius)] px-3 py-2 max-w-[85%]">
+              <p className="text-[13px] text-[var(--text)] whitespace-pre-wrap">{userPrompt}</p>
+            </div>
+          </div>
+        )}
+
+        {/* AI response */}
         {error ? (
           <div
             className="bg-red-500/10 border border-red-500/30 text-red-400 rounded-[var(--radius)] p-3 text-[12px]"

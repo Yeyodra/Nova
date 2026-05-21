@@ -146,15 +146,6 @@ export const ComparePage: React.FC = () => {
         <ModelSelector />
       </div>
 
-      {/* User prompt bubble */}
-      {lastPrompt && (
-        <div className="px-4 py-3 border-b border-[var(--border)] shrink-0">
-          <div className="max-w-2xl ml-auto bg-[var(--fill-quaternary)] rounded-[var(--radius)] px-4 py-3">
-            <p className="text-[13px] text-[var(--text)] whitespace-pre-wrap">{lastPrompt}</p>
-          </div>
-        </div>
-      )}
-
       {/* Columns area — middle, flex-1 */}
       <div className="flex-1 flex overflow-hidden min-h-0">
         {!showEmptyState ? (
@@ -162,6 +153,7 @@ export const ComparePage: React.FC = () => {
             <CompareColumn
               key={col.providerId + '::' + col.modelId}
               column={col}
+              userPrompt={lastPrompt ?? undefined}
               onUseModel={handleUseModel}
               onRetry={handleRetry}
             />
