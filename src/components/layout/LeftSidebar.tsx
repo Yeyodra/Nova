@@ -4,7 +4,6 @@ import { SessionList } from '@/components/sidebar/SessionList';
 import { SidebarSimple, GearSix, MagnifyingGlass, CaretRight } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useUIStore } from '@/stores/useUIStore';
-import { useCompareStore } from '@/stores/useCompareStore';
 
 export const LeftSidebar: React.FC = () => {
   const setSettingsOpen = useUIStore((s) => s.setSettingsOpen);
@@ -75,11 +74,7 @@ export const LeftSidebar: React.FC = () => {
       {/* Compare — simple clickable label */}
       <button
         type="button"
-        onClick={() => {
-          useCompareStore.getState().setActiveCompareSession(null);
-          useCompareStore.getState().clearColumns();
-          setMainView('compare');
-        }}
+        onClick={() => setMainView('compare')}
         className="flex items-center gap-1.5 px-4 pt-1 pb-1.5 w-full text-left text-[11px] uppercase tracking-wider font-medium text-[var(--text-subtle)] hover:text-[var(--text-muted)] select-none transition-colors"
       >
         Compare
