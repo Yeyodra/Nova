@@ -72,10 +72,31 @@ export const ComparePage: React.FC = () => {
     );
     setIsSending(true);
 
-    // Set up channel (tokens are interleaved — v1 uses fetch-after-complete)
+    // Set up channel — tokens are prefixed with "{index}:" for demuxing
     const onToken = new Channel<string>();
-    onToken.onmessage = () => {
-      // v1: tokens interleaved, just wait for completion
+    onToken.onmessage = (prefixedToken: string) => {
+      const colonIdx = prefixedToken.indexOf(':');
+      if (colonIdx === -1) return;
+
+      const indexStr = prefixedToken.substring(0, colonIdx);
+      const payload = prefixedToken.substring(colonIdx + 1);
+
+      // Handle error messages from backend
+      if (payload.startsWith('ERROR:')) {
+        const errorMsg = payload.substring(6);
+        const modelIndex = parseInt(indexStr, 10);
+        const cols = useCompareStore.getState().columns;
+        if (modelIndex >= 0 && modelIndex < cols.length) {
+          useCompareStore.getState().setColumnError(cols[modelIndex].modelId, errorMsg);
+        }
+        return;
+      }
+
+      const modelIndex = parseInt(indexStr, 10);
+      const cols = useCompareStore.getState().columns;
+      if (modelIndex >= 0 && modelIndex < cols.length) {
+        useCompareStore.getState().appendColumnToken(cols[modelIndex].modelId, payload);
+      }
     };
 
     try {

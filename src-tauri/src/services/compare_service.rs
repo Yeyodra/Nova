@@ -255,6 +255,7 @@ pub async fn send_compare(
                     &attachments_clone,
                     &channel,
                     &cancel,
+                    i,
                 ),
             )
             .await;
@@ -264,13 +265,13 @@ pub async fn send_compare(
                     // Success — message already saved in execute_single_model
                 }
                 Ok(Err(e)) => {
-                    // Model returned an error
-                    let _ = channel.send(format!("ERROR:{}", e));
+                    // Model returned an error — prefix error with index too
+                    let _ = channel.send(format!("{}:ERROR:{}", i, e));
                 }
                 Err(_) => {
-                    // Timeout
+                    // Timeout — prefix error with index too
                     let _ = channel
-                        .send("ERROR:Request timed out after 120 seconds".to_string());
+                        .send(format!("{}:ERROR:Request timed out after 120 seconds", i));
                 }
             }
         });
@@ -291,6 +292,7 @@ async fn execute_single_model(
     attachments: &[Attachment],
     channel: &Channel<String>,
     cancel_token: &CancellationToken,
+    model_index: usize,
 ) -> AppResult<(String, Option<chat_service::TokenUsage>)> {
     // Resolve provider
     let provider = sqlx::query_as::<_, Provider>(
@@ -309,6 +311,8 @@ async fn execute_single_model(
         .map(|s| s.to_string())
         .unwrap_or_else(|| provider.base_url.clone());
 
+    let token_prefix = format!("{}:", model_index);
+
     // Dispatch based on api_format
     let result = if provider.uses_anthropic_format() {
         chat_service::send_anthropic(
@@ -320,6 +324,7 @@ async fn execute_single_model(
             attachments,
             channel,
             cancel_token,
+            &token_prefix,
         )
         .await?
     } else {
@@ -332,6 +337,7 @@ async fn execute_single_model(
             attachments,
             channel,
             cancel_token,
+            &token_prefix,
         )
         .await?
     };

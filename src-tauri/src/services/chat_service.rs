@@ -411,6 +411,7 @@ async fn send_message_inner(
             &last_user_attachments,
             &on_token,
             &cancel_token,
+            "",
         )
         .await?
     } else {
@@ -424,6 +425,7 @@ async fn send_message_inner(
             &last_user_attachments,
             &on_token,
             &cancel_token,
+            "",
         )
         .await?
     };
@@ -594,6 +596,7 @@ pub(crate) async fn send_openai_compatible(
     last_user_attachments: &[Attachment],
     on_token: &Channel<String>,
     cancel_token: &CancellationToken,
+    token_prefix: &str,
 ) -> AppResult<(String, Option<TokenUsage>)> {
     let client = http_client::streaming_client()?;
     let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
@@ -678,7 +681,7 @@ pub(crate) async fn send_openai_compatible(
         return Err(AppError::Http(format!("{status}: {body}")));
     }
 
-    stream_openai_sse(response, on_token, cancel_token).await
+    stream_openai_sse(response, on_token, cancel_token, token_prefix).await
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -691,6 +694,7 @@ pub(crate) async fn send_anthropic(
     last_user_attachments: &[Attachment],
     on_token: &Channel<String>,
     cancel_token: &CancellationToken,
+    token_prefix: &str,
 ) -> AppResult<(String, Option<TokenUsage>)> {
     let client = http_client::streaming_client()?;
 
@@ -822,7 +826,7 @@ pub(crate) async fn send_anthropic(
         return Err(AppError::Http(format!("Anthropic {status}: {body}")));
     }
 
-    let (output, usage) = stream_anthropic_sse(response, on_token, cancel_token).await?;
+    let (output, usage) = stream_anthropic_sse(response, on_token, cancel_token, token_prefix).await?;
 
     // Fallback: some gateways return message_start → message_stop without any
     // content_block events for certain models.  Retry non-streaming.
@@ -859,7 +863,11 @@ pub(crate) async fn send_anthropic(
             .and_then(|block| block.get("text"))
             .and_then(Value::as_str)
         {
-            let _ = on_token.send(text.to_string());
+            if token_prefix.is_empty() {
+                let _ = on_token.send(text.to_string());
+            } else {
+                let _ = on_token.send(format!("{}{}", token_prefix, text));
+            }
             return Ok((text.to_string(), usage));
         }
 
@@ -873,6 +881,7 @@ async fn stream_openai_sse(
     response: reqwest::Response,
     on_token: &Channel<String>,
     cancel_token: &CancellationToken,
+    token_prefix: &str,
 ) -> AppResult<(String, Option<TokenUsage>)> {
     let mut stream = response.bytes_stream();
     let mut line_buffer = String::new();
@@ -896,7 +905,7 @@ async fn stream_openai_sse(
                                 line.pop();
                             }
 
-                            if parse_openai_sse_line(&line, on_token, &mut output, &mut usage)? {
+                            if parse_openai_sse_line(&line, on_token, &mut output, &mut usage, token_prefix)? {
                                 return Ok((output, usage.finish()));
                             }
                         }
@@ -909,7 +918,7 @@ async fn stream_openai_sse(
     }
 
     if !line_buffer.is_empty() {
-        parse_openai_sse_line(&line_buffer, on_token, &mut output, &mut usage)?;
+        parse_openai_sse_line(&line_buffer, on_token, &mut output, &mut usage, token_prefix)?;
     }
 
     Ok((output, usage.finish()))
@@ -920,6 +929,7 @@ fn parse_openai_sse_line(
     on_token: &Channel<String>,
     output: &mut String,
     usage: &mut UsageAccumulator,
+    token_prefix: &str,
 ) -> AppResult<bool> {
     let trimmed = line.trim();
     if trimmed.is_empty() {
@@ -954,7 +964,11 @@ fn parse_openai_sse_line(
         .and_then(Value::as_str)
     {
         output.push_str(token);
-        let _ = on_token.send(token.to_string());
+        if token_prefix.is_empty() {
+            let _ = on_token.send(token.to_string());
+        } else {
+            let _ = on_token.send(format!("{}{}", token_prefix, token));
+        }
     }
 
     Ok(false)
@@ -964,6 +978,7 @@ async fn stream_anthropic_sse(
     response: reqwest::Response,
     on_token: &Channel<String>,
     cancel_token: &CancellationToken,
+    token_prefix: &str,
 ) -> AppResult<(String, Option<TokenUsage>)> {
     let mut stream = response.bytes_stream();
     let mut line_buffer = String::new();
@@ -998,6 +1013,7 @@ async fn stream_anthropic_sse(
                                 on_token,
                                 &mut output,
                                 &mut usage,
+                                token_prefix,
                             )? {
                                 message_stop_received = true;
                                 break 'outer;
@@ -1031,6 +1047,7 @@ fn parse_anthropic_sse_line(
     on_token: &Channel<String>,
     output: &mut String,
     usage: &mut UsageAccumulator,
+    token_prefix: &str,
 ) -> AppResult<bool> {
     let trimmed = line.trim();
     if trimmed.is_empty() {
@@ -1089,7 +1106,11 @@ fn parse_anthropic_sse_line(
                 .and_then(Value::as_str)
             {
                 output.push_str(token);
-                let _ = on_token.send(token.to_string());
+                if token_prefix.is_empty() {
+                    let _ = on_token.send(token.to_string());
+                } else {
+                    let _ = on_token.send(format!("{}{}", token_prefix, token));
+                }
             }
         }
         "message_stop" => return Ok(true),
