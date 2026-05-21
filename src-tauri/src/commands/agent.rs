@@ -1,10 +1,12 @@
 use serde::Deserialize;
+use std::sync::Arc;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, State};
 
 use crate::{
     agents::runner::{AgentRunner, AgentRunParams},
     error::AppResult,
+    mcp::service::McpService,
     models::{AgentConfig, AgentRun, ToolCall},
     services::agent_service,
     state::AppState,
@@ -44,6 +46,7 @@ pub async fn list_tool_calls(
 #[tauri::command]
 pub async fn run_agent(
     state: State<'_, AppState>,
+    mcp_service: State<'_, Arc<McpService>>,
     app_handle: AppHandle,
     request: RunAgentRequest,
     on_token: Channel<String>,
@@ -55,7 +58,8 @@ pub async fn run_agent(
         app_handle,
         state.permissions.clone(),
         cancel_token,
-    );
+    )
+    .with_mcp_service(Arc::clone(&mcp_service));
 
     let params = AgentRunParams {
         session_id: &request.session_id,

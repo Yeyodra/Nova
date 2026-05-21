@@ -5,6 +5,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 use futures_util::stream::FuturesUnordered;
@@ -21,9 +22,11 @@ use uuid::Uuid;
 
 use crate::agents::prompts::get_prompt;
 use crate::error::{AppError, AppResult};
+use crate::mcp::service::McpService;
+use crate::mcp::types::McpContent;
 use crate::services::{now_rfc3339, provider_service};
 use crate::state::PermissionState;
-use crate::tools::{ToolCall, ToolExecutor, ToolName};
+use crate::tools::{ToolCall, ToolExecutor, ToolName, ToolRegistry, ToolSource};
 
 const MAX_REACT_ITERATIONS: usize = 10;
 const SYNTHESIS_REACT_ITERATIONS: usize = 8;
@@ -255,6 +258,7 @@ pub struct AgentRunner {
     pub app_handle: AppHandle,
     pub permissions: PermissionState,
     pub cancel_token: CancellationToken,
+    pub mcp_service: Option<Arc<McpService>>,
 }
 
 pub trait TokenSink: Send + Sync {
@@ -330,7 +334,71 @@ struct SubagentParams {
 
 impl AgentRunner {
     pub fn new(db: SqlitePool, app_handle: AppHandle, permissions: PermissionState, cancel_token: CancellationToken) -> Self {
-        Self { db, app_handle, permissions, cancel_token }
+        Self { db, app_handle, permissions, cancel_token, mcp_service: None }
+    }
+
+    pub fn with_mcp_service(mut self, mcp_service: Arc<McpService>) -> Self {
+        self.mcp_service = Some(mcp_service);
+        self
+    }
+
+    /// Build OpenAI-format tool definitions merging builtins + MCP tools
+    async fn build_openai_tools(&self) -> Vec<Value> {
+        let builtin = builtin_openai_tool_definitions();
+        if let Some(mcp) = &self.mcp_service {
+            let mut registry = ToolRegistry::new();
+            let mcp_tools = mcp.get_all_tools().await;
+            // get_all_tools returns Vec<(server_id, McpTool)> — we need server names
+            // For now use server_id as the name prefix (server_store lookup would need pool)
+            let tools_with_names: Vec<_> = mcp_tools
+                .into_iter()
+                .map(|(server_id, tool)| {
+                    let server_name = server_id.clone();
+                    (server_id, server_name, tool)
+                })
+                .collect();
+            registry.set_mcp_tools(tools_with_names);
+            registry.get_all_tools_openai(builtin)
+        } else {
+            builtin
+        }
+    }
+
+    /// Build Anthropic-format tool definitions merging builtins + MCP tools
+    async fn build_anthropic_tools(&self) -> Vec<Value> {
+        let builtin = builtin_anthropic_tool_definitions();
+        if let Some(mcp) = &self.mcp_service {
+            let mut registry = ToolRegistry::new();
+            let mcp_tools = mcp.get_all_tools().await;
+            let tools_with_names: Vec<_> = mcp_tools
+                .into_iter()
+                .map(|(server_id, tool)| {
+                    let server_name = server_id.clone();
+                    (server_id, server_name, tool)
+                })
+                .collect();
+            registry.set_mcp_tools(tools_with_names);
+            registry.get_all_tools_anthropic(builtin)
+        } else {
+            builtin
+        }
+    }
+
+    /// Build a ToolRegistry for resolving tool calls
+    async fn build_registry(&self) -> ToolRegistry {
+        let mut registry = ToolRegistry::new();
+        if let Some(mcp) = &self.mcp_service {
+            let mcp_tools = mcp.get_all_tools().await;
+            let tools_with_names: Vec<_> = mcp_tools
+                .into_iter()
+                .map(|(server_id, tool)| {
+                    let server_name = server_id.clone();
+                    (server_id, server_name, tool)
+                })
+                .collect();
+            registry.set_mcp_tools(tools_with_names);
+        }
+        registry
     }
 
     pub async fn run(
@@ -972,22 +1040,81 @@ impl AgentRunner {
             }
         }
 
-        let execution = if let Some(tool_name) = map_tool_name(&tool_call.name) {
-            let result = executor
-                .execute(ToolCall {
-                    tool: tool_name,
-                    input: tool_call.input.clone(),
-                })
-                .await;
-
-            ToolExecutionOutcome {
-                output: result.output,
-                is_error: result.is_error,
+        let registry = self.build_registry().await;
+        let execution = match registry.resolve_tool_call(&tool_call.name) {
+            ToolSource::Mcp { server_id, tool_name } => {
+                if let Some(mcp) = &self.mcp_service {
+                    match mcp.call_tool(&server_id, &tool_name, tool_call.input.clone(), &self.db).await {
+                        Ok(result) => {
+                            let text = result
+                                .content
+                                .iter()
+                                .map(|c| match c {
+                                    McpContent::Text { text } => text.clone(),
+                                    McpContent::Image { mime_type, .. } => {
+                                        format!("[Image: {}]", mime_type)
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\n");
+                            let output = if result.is_error {
+                                format!("Tool error: {}", text)
+                            } else {
+                                text
+                            };
+                            let _ = self.app_handle.emit(
+                                "mcp:tool-called",
+                                serde_json::json!({
+                                    "serverId": server_id,
+                                    "toolName": tool_name,
+                                    "status": "success"
+                                }),
+                            );
+                            ToolExecutionOutcome {
+                                output,
+                                is_error: result.is_error,
+                            }
+                        }
+                        Err(e) => {
+                            let _ = self.app_handle.emit(
+                                "mcp:tool-called",
+                                serde_json::json!({
+                                    "serverId": server_id,
+                                    "toolName": tool_name,
+                                    "status": "error"
+                                }),
+                            );
+                            ToolExecutionOutcome {
+                                output: format!("MCP tool call failed: {e}"),
+                                is_error: true,
+                            }
+                        }
+                    }
+                } else {
+                    ToolExecutionOutcome {
+                        output: "MCP service not available".to_string(),
+                        is_error: true,
+                    }
+                }
             }
-        } else {
-            ToolExecutionOutcome {
-                output: format!("Unknown tool: {}", tool_call.name),
-                is_error: true,
+            ToolSource::Builtin(tool_name) => {
+                if map_tool_name(&tool_call.name).is_some() {
+                    let result = executor
+                        .execute(ToolCall {
+                            tool: tool_name,
+                            input: tool_call.input.clone(),
+                        })
+                        .await;
+                    ToolExecutionOutcome {
+                        output: result.output,
+                        is_error: result.is_error,
+                    }
+                } else {
+                    ToolExecutionOutcome {
+                        output: format!("Unknown tool: {}", tool_call.name),
+                        is_error: true,
+                    }
+                }
             }
         };
 
@@ -1120,7 +1247,7 @@ impl AgentRunner {
         let payload = json!({
             "model": model,
             "messages": to_openai_messages(messages),
-            "tools": openai_tool_definitions(),
+            "tools": self.build_openai_tools().await,
             "stream": true,
         });
 
@@ -1171,7 +1298,7 @@ impl AgentRunner {
 
         // Prompt caching: tools cached
         let tools_with_cache = {
-            let mut tools = anthropic_tool_definitions();
+            let mut tools = self.build_anthropic_tools().await;
             if let Some(last_tool) = tools.last_mut() {
                 last_tool["cache_control"] = json!({"type": "ephemeral"});
             }
@@ -2073,7 +2200,7 @@ fn push_anthropic_message(out: &mut Vec<Value>, role: &str, mut blocks: Vec<Valu
     }));
 }
 
-fn openai_tool_definitions() -> Vec<Value> {
+fn builtin_openai_tool_definitions() -> Vec<Value> {
     vec![
         json!({
             "type": "function",
@@ -2183,8 +2310,8 @@ fn openai_tool_definitions() -> Vec<Value> {
     ]
 }
 
-fn anthropic_tool_definitions() -> Vec<Value> {
-    openai_tool_definitions()
+fn builtin_anthropic_tool_definitions() -> Vec<Value> {
+    builtin_openai_tool_definitions()
         .into_iter()
         .filter_map(|tool| {
             let function = tool.get("function")?;

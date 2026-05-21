@@ -1,7 +1,9 @@
+use std::sync::Arc;
+
 use tauri::ipc::Channel;
 use tauri::{AppHandle, State};
 
-use crate::{error::AppResult, models::MessageWithAttachments, services::chat_service, state::AppState};
+use crate::{error::AppResult, mcp::service::McpService, models::MessageWithAttachments, services::chat_service, state::AppState};
 
 #[tauri::command]
 pub async fn get_messages(
@@ -15,6 +17,7 @@ pub async fn get_messages(
 #[allow(clippy::too_many_arguments)]
 pub async fn send_message(
     state: State<'_, AppState>,
+    mcp_service: State<'_, Arc<McpService>>,
     session_id: String,
     content: String,
     provider_id: Option<String>,
@@ -35,6 +38,7 @@ pub async fn send_message(
         on_token,
         &app_handle,
         cancel_token,
+        &mcp_service,
     )
     .await;
 

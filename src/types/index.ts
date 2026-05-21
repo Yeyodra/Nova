@@ -159,3 +159,40 @@ export interface PermissionRequest {
   agentType: AgentType;
   agentRunId: string;
 }
+
+// MCP Types
+export type McpTransportType = 'stdio' | 'http';
+export type McpConnectionStatus = 'connected' | 'disconnected' | 'connecting' | 'error';
+
+export interface McpServer {
+  id: string;
+  name: string;
+  transportType: McpTransportType;
+  command?: string;
+  args?: string[];
+  envVars?: Record<string, string>;
+  url?: string;
+  headers?: Record<string, string>;
+  authType: 'none' | 'bearer';
+  authToken?: string;
+  enabled: boolean;
+  status: McpConnectionStatus;
+  toolsCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface McpTool {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+export interface McpToolResult {
+  content: McpContent[];
+  isError: boolean;
+}
+
+export type McpContent =
+  | { type: 'text'; text: string }
+  | { type: 'image'; data: string; mimeType: string };

@@ -102,6 +102,9 @@ function AttachmentGrid({ attachments, onImageClick }: { attachments: Attachment
 const markdownComponents = {
   code: MarkdownCodeBlock as React.ComponentType<React.HTMLAttributes<HTMLElement>>,
   pre: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+  p: ({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) => (
+    <div className="mb-4 last:mb-0" {...props}>{children}</div>
+  ),
 };
 
 interface ChatMessageProps {

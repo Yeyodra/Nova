@@ -7,6 +7,7 @@ use futures_util::StreamExt;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use serde_json::Value;
 use sqlx::SqlitePool;
+use std::sync::Arc;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
@@ -14,7 +15,9 @@ use uuid::Uuid;
 
 use crate::{
     error::{AppError, AppResult},
+    mcp::service::McpService,
     models::{Attachment, Message, MessageWithAttachments},
+    tools::registry::{ToolRegistry, ToolSource},
 };
 
 use super::file_service;
@@ -266,6 +269,7 @@ pub async fn send_message(
     on_token: Channel<String>,
     app_handle: &AppHandle,
     cancel_token: CancellationToken,
+    mcp_service: &Arc<McpService>,
 ) -> AppResult<()> {
     let result = send_message_inner(
         db,
@@ -277,6 +281,7 @@ pub async fn send_message(
         on_token,
         app_handle,
         cancel_token,
+        mcp_service,
     )
     .await;
     match &result {
@@ -303,6 +308,7 @@ async fn send_message_inner(
     on_token: Channel<String>,
     app_handle: &AppHandle,
     cancel_token: CancellationToken,
+    mcp_service: &Arc<McpService>,
 ) -> AppResult<()> {
     let normalized = content.trim();
     if normalized.is_empty() {
@@ -401,6 +407,13 @@ async fn send_message_inner(
         if provider.uses_anthropic_format() { "anthropic" } else { "openai" },
     );
 
+    // Build MCP tool definitions if available (only for OpenAI-compatible providers)
+    let mcp_tool_defs = if !provider.uses_anthropic_format() {
+        build_mcp_tool_defs(mcp_service).await
+    } else {
+        Vec::new()
+    };
+
     let (assistant_output, token_usage) = if provider.uses_anthropic_format() {
         send_anthropic(
             history,
@@ -416,7 +429,7 @@ async fn send_message_inner(
         .await?
     } else {
         let supports_stream_usage = provider.provider_type == "openai";
-        send_openai_compatible(
+        send_openai_compatible_with_tools(
             &provider.base_url,
             model,
             provider.api_key.as_deref(),
@@ -426,6 +439,9 @@ async fn send_message_inner(
             &on_token,
             &cancel_token,
             "",
+            &mcp_tool_defs,
+            mcp_service,
+            db,
         )
         .await?
     };
@@ -682,6 +698,305 @@ pub(crate) async fn send_openai_compatible(
     }
 
     stream_openai_sse(response, on_token, cancel_token, token_prefix).await
+}
+
+// ─── MCP Tool Support for Simple Chat ────────────────────────────────────────
+
+/// Build MCP tool definitions in OpenAI format (no builtins — only MCP tools in simple chat)
+async fn build_mcp_tool_defs(mcp_service: &Arc<McpService>) -> Vec<Value> {
+    let mcp_tools = mcp_service.get_all_tools().await;
+    if mcp_tools.is_empty() {
+        return Vec::new();
+    }
+    let mut registry = ToolRegistry::new();
+    let tools_with_names: Vec<_> = mcp_tools
+        .into_iter()
+        .map(|(server_id, tool)| {
+            let server_name = server_id.clone();
+            (server_id, server_name, tool)
+        })
+        .collect();
+    registry.set_mcp_tools(tools_with_names);
+    registry.get_all_tools_openai(Vec::new())
+}
+
+/// OpenAI-compatible chat with MCP tool support (max 1 tool-use round).
+///
+/// Flow:
+/// 1. Make a non-streaming request WITH tool definitions
+/// 2. If response contains tool_calls → execute them, then stream a follow-up with results
+/// 3. If response is plain content → stream it to the frontend
+#[allow(clippy::too_many_arguments)]
+async fn send_openai_compatible_with_tools(
+    base_url: &str,
+    model: &str,
+    api_key: Option<&str>,
+    include_usage: bool,
+    history: Vec<Message>,
+    last_user_attachments: &[Attachment],
+    on_token: &Channel<String>,
+    cancel_token: &CancellationToken,
+    token_prefix: &str,
+    tool_defs: &[Value],
+    mcp_service: &Arc<McpService>,
+    db: &SqlitePool,
+) -> AppResult<(String, Option<TokenUsage>)> {
+    // If no MCP tools available, fall back to normal streaming (no tool overhead)
+    if tool_defs.is_empty() {
+        return send_openai_compatible(
+            base_url,
+            model,
+            api_key,
+            include_usage,
+            history,
+            last_user_attachments,
+            on_token,
+            cancel_token,
+            token_prefix,
+        )
+        .await;
+    }
+
+    // Step 1: Non-streaming request with tools to check if LLM wants to call tools
+    let client = http_client::streaming_client()?;
+    let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+
+    let last_user_idx = history.iter().rposition(|m| m.role == "user");
+    let messages: Vec<Value> = history
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            if Some(i) == last_user_idx && !last_user_attachments.is_empty() {
+                serde_json::json!({
+                    "role": m.role,
+                    "content": build_openai_message_content(&m.content, last_user_attachments)
+                })
+            } else {
+                serde_json::json!({ "role": m.role, "content": m.content })
+            }
+        })
+        .collect();
+
+    // Build system prompt (same logic as send_openai_compatible)
+    let last_user_content = history.iter().rev().find(|m| m.role == "user").map(|m| m.content.as_str()).unwrap_or("");
+    let system_instructions = if needs_visual_guide(last_user_content) {
+        concat!(
+            "IMPORTANT: Reply using the same language as the user's latest message. If user writes Indonesian, answer in Indonesian. Never switch to another language unless the user explicitly asks you to.\n\n",
+            "INTERACTIVE PREVIEW: When the user asks for a visualization, diagram, chart, interactive demo, or any visual HTML content, output it as a fenced code block with tag `html:preview`. The app renders it as a live iframe preview with a full design system pre-loaded (CSS variables, SVG color ramp classes, pre-styled form elements, light/dark mode).\n\n",
+            "Design rules: flat (no gradients/shadows/glow), use CSS vars for colors (var(--color-text-primary), var(--color-background-secondary), etc). system-ui font, 2 weights (400/500), sentence case. Structure: style → content → script last.\n\n",
+            "SVG diagrams: use pre-loaded classes — `.t` (14px text), `.ts` (12px), `.th` (14px bold), `.box` (neutral), `.node` (clickable), `.arr` (arrow), `.leader` (dashed). Color ramps: `class=\"c-blue\"` on `<g>` wrapping shape+text — auto light/dark. Available: c-purple, c-teal, c-coral, c-blue, c-amber, c-green, c-red, c-gray, c-pink. Max 2-3 ramps per diagram.\n\n",
+            "Chart.js: wrap canvas in div with position:relative + explicit height. Load UMD from cdnjs.cloudflare.com with onload callback. Disable default legend, build custom HTML legend with 10px colored squares.\n\n",
+            "Interactive: form elements pre-styled. Use sendPrompt(text) for drill-down. CDN: cdnjs.cloudflare.com, cdn.jsdelivr.net, unpkg.com, esm.sh only.\n\n",
+            "Always output COMPLETE standalone HTML (DOCTYPE, html, head, body). No titles/prose inside widget — explanations go in your response text."
+        )
+    } else {
+        concat!(
+            "IMPORTANT: Reply using the same language as the user's latest message. If user writes Indonesian, answer in Indonesian. Never switch to another language unless the user explicitly asks you to.\n\n",
+            "You can create interactive visualizations (charts, diagrams, widgets) by outputting a fenced code block with the language tag `html:preview`. The preview iframe has a full design system pre-loaded with CSS variables, SVG color ramp classes, and light/dark mode support. Use this when the user asks for any visual or interactive content."
+        )
+    };
+
+    let mut all_messages = vec![serde_json::json!({
+        "role": "system",
+        "content": system_instructions,
+    })];
+    all_messages.extend(messages.clone());
+
+    let mut payload = serde_json::json!({
+        "model": model,
+        "messages": all_messages,
+        "temperature": 0.2,
+        "presence_penalty": 0.0,
+        "frequency_penalty": 0.0,
+        "stream": false,
+        "tools": tool_defs,
+    });
+
+    if include_usage {
+        payload["stream_options"] = serde_json::json!({ "include_usage": true });
+    }
+
+    let mut request = client
+        .post(&endpoint)
+        .header(CONTENT_TYPE, "application/json")
+        .json(&payload);
+
+    if let Some(key) = api_key.filter(|k| !k.trim().is_empty()) {
+        request = request.header(AUTHORIZATION, format!("Bearer {key}"));
+    }
+
+    // Check cancellation before sending
+    if cancel_token.is_cancelled() {
+        return Err(AppError::Cancelled);
+    }
+
+    let response = request.send().await?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(AppError::Http(format!("{status}: {body}")));
+    }
+
+    let body: Value = response.json().await?;
+
+    // Extract usage from non-streaming response
+    let mut usage_acc = UsageAccumulator::default();
+    if let Some(u) = body.get("usage") {
+        if let Some(pt) = u.get("prompt_tokens").and_then(Value::as_u64) {
+            usage_acc.prompt_tokens = pt as u32;
+        }
+        if let Some(ct) = u.get("completion_tokens").and_then(Value::as_u64) {
+            usage_acc.completion_tokens = ct as u32;
+        }
+    }
+
+    // Check if the response contains tool_calls
+    let choice = body.get("choices")
+        .and_then(Value::as_array)
+        .and_then(|c| c.first());
+
+    let message = choice.and_then(|c| c.get("message"));
+    let tool_calls = message
+        .and_then(|m| m.get("tool_calls"))
+        .and_then(Value::as_array);
+
+    if let Some(tool_calls) = tool_calls {
+        if !tool_calls.is_empty() {
+            log::info!("chat: LLM requested {} tool call(s), executing...", tool_calls.len());
+
+            // Execute tool calls via MCP
+            let tool_results = execute_mcp_tool_calls(tool_calls, mcp_service, db).await;
+
+            // Build follow-up messages: original messages + assistant tool_call message + tool results
+            let assistant_tool_msg = message.cloned().unwrap_or_default();
+            let mut followup_messages = all_messages;
+            followup_messages.push(serde_json::json!({
+                "role": "assistant",
+                "tool_calls": tool_calls,
+                "content": assistant_tool_msg.get("content").cloned().unwrap_or(Value::Null),
+            }));
+
+            for result in &tool_results {
+                followup_messages.push(result.clone());
+            }
+
+            // Step 2: Stream the follow-up response (no tools — prevent loops)
+            let followup_payload = serde_json::json!({
+                "model": model,
+                "messages": followup_messages,
+                "temperature": 0.2,
+                "presence_penalty": 0.0,
+                "frequency_penalty": 0.0,
+                "stream": true,
+            });
+
+            let mut followup_request = client
+                .post(&endpoint)
+                .header(CONTENT_TYPE, "application/json")
+                .json(&followup_payload);
+
+            if let Some(key) = api_key.filter(|k| !k.trim().is_empty()) {
+                followup_request = followup_request.header(AUTHORIZATION, format!("Bearer {key}"));
+            }
+
+            if cancel_token.is_cancelled() {
+                return Err(AppError::Cancelled);
+            }
+
+            let followup_response = followup_request.send().await?;
+            if !followup_response.status().is_success() {
+                let status = followup_response.status();
+                let body = followup_response.text().await.unwrap_or_default();
+                return Err(AppError::Http(format!("{status}: {body}")));
+            }
+
+            return stream_openai_sse(followup_response, on_token, cancel_token, token_prefix).await;
+        }
+    }
+
+    // No tool calls — stream the content directly to frontend
+    let content = message
+        .and_then(|m| m.get("content"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+
+    if !content.is_empty() {
+        if token_prefix.is_empty() {
+            let _ = on_token.send(content.to_string());
+        } else {
+            let _ = on_token.send(format!("{}{}", token_prefix, content));
+        }
+    }
+
+    Ok((content.to_string(), usage_acc.finish()))
+}
+
+/// Execute MCP tool calls and return tool result messages in OpenAI format
+async fn execute_mcp_tool_calls(
+    tool_calls: &[Value],
+    mcp_service: &Arc<McpService>,
+    db: &SqlitePool,
+) -> Vec<Value> {
+    // Build registry for resolving tool names
+    let mut registry = ToolRegistry::new();
+    let mcp_tools = mcp_service.get_all_tools().await;
+    let tools_with_names: Vec<_> = mcp_tools
+        .into_iter()
+        .map(|(server_id, tool)| {
+            let server_name = server_id.clone();
+            (server_id, server_name, tool)
+        })
+        .collect();
+    registry.set_mcp_tools(tools_with_names);
+
+    let mut results = Vec::new();
+
+    for tc in tool_calls {
+        let tool_call_id = tc.get("id").and_then(Value::as_str).unwrap_or("");
+        let function = tc.get("function");
+        let name = function
+            .and_then(|f| f.get("name"))
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let args_str = function
+            .and_then(|f| f.get("arguments"))
+            .and_then(Value::as_str)
+            .unwrap_or("{}");
+        let args: Value = serde_json::from_str(args_str)
+            .unwrap_or(Value::Object(Default::default()));
+
+        let result_content = match registry.resolve_tool_call(name) {
+            ToolSource::Mcp { server_id, tool_name } => {
+                match mcp_service.call_tool(&server_id, &tool_name, args, db).await {
+                    Ok(tool_result) => {
+                        // Format MCP result content as text
+                        tool_result
+                            .content
+                            .iter()
+                            .filter_map(|c| match c {
+                                crate::mcp::types::McpContent::Text { text } => Some(text.as_str()),
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    }
+                    Err(e) => format!("Tool execution error: {}", e),
+                }
+            }
+            ToolSource::Builtin(_) => {
+                // Skip built-in tools in simple chat mode
+                "Error: Built-in tools are not available in chat mode.".to_string()
+            }
+        };
+
+        results.push(serde_json::json!({
+            "role": "tool",
+            "tool_call_id": tool_call_id,
+            "content": result_content,
+        }));
+    }
+
+    results
 }
 
 #[allow(clippy::too_many_arguments)]

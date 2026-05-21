@@ -16,6 +16,9 @@ import { useSettingsStore } from '@/stores/useSettingsStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { useAgentStore } from '@/stores/useAgentStore';
 import { useLayoutStore } from '@/stores/useLayoutStore';
+import { useToastStore } from '@/stores/useToastStore';
+import { useMcpStore } from '@/stores/useMcpStore';
+import { ToastContainer } from '@/components/ui/Toast';
 import { SettingsModal } from '@/components/settings/SettingsModal';
 import { ExcalidrawCanvas } from '@/components/canvas/ExcalidrawCanvas';
 import { ComparePage } from '@/components/compare/ComparePage';
@@ -351,6 +354,30 @@ export const AppShell: React.FC = () => {
         setPendingPermission(req);
       });
 
+      const unlistenMcpError = await listen<{ serverName: string; error: string }>(
+        'mcp:error',
+        (event) => {
+          useToastStore.getState().addToast(
+            `MCP Error (${event.payload.serverName}): ${event.payload.error}`,
+            'error'
+          );
+        }
+      );
+
+      const unlistenMcpStatus = await listen<{ serverId: string; status: string }>(
+        'mcp:status-changed',
+        (event) => {
+          useMcpStore.getState().loadServers();
+          const status = event.payload.status;
+          if (status === 'connected') {
+            useToastStore.getState().addToast(
+              `MCP server connected`,
+              'success'
+            );
+          }
+        }
+      );
+
       localUnlisten.push(
         unlistenChatDone,
         unlistenChatError,
@@ -362,6 +389,8 @@ export const AppShell: React.FC = () => {
         unlistenAgentDone,
         unlistenAgentError,
         unlistenPermission,
+        unlistenMcpError,
+        unlistenMcpStatus,
       );
 
       if (cancelled) {
@@ -661,6 +690,8 @@ export const AppShell: React.FC = () => {
         onAllow={handlePermissionAllow}
         onDeny={handlePermissionDeny}
       />
+
+      <ToastContainer />
     </div>
   );
 };

@@ -3,6 +3,7 @@ pub mod chat;
 pub mod compare;
 pub mod drawing;
 pub mod file;
+pub mod mcp;
 pub mod project;
 pub mod provider;
 pub mod session;

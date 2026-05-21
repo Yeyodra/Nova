@@ -1,26 +1,76 @@
 import React, { useEffect, useState } from 'react';
-import { X, Wrench, Robot, GearSix } from '@phosphor-icons/react';
+import { X, Wrench, Robot, GearSix, Plugs } from '@phosphor-icons/react';
 import { useUIStore } from '@/stores/useUIStore';
 import { ProvidersTab } from './ProvidersTab';
 import { AgentsTab } from './AgentsTab';
+import { McpTab } from './McpTab';
+import { McpServerForm } from './McpServerForm';
+import { McpQuickImport } from './McpQuickImport';
+import { useMcpStore } from '@/stores/useMcpStore';
+import { McpServer } from '@/types';
 import { cn } from '@/lib/utils';
 
-type SettingsTab = 'providers' | 'agents' | 'tools' | 'system';
+type SettingsTab = 'providers' | 'agents' | 'mcp' | 'tools' | 'system';
 
 export const SettingsModal: React.FC = () => {
   const { settingsOpen, setSettingsOpen } = useUIStore();
   const [activeTab, setActiveTab] = useState<SettingsTab>('providers');
+  const [showMcpForm, setShowMcpForm] = useState(false);
+  const [editingServer, setEditingServer] = useState<McpServer | null>(null);
+  const [showMcpImport, setShowMcpImport] = useState(false);
+  const { addServer, loadServers } = useMcpStore();
 
   useEffect(() => {
     if (!settingsOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSettingsOpen(false);
+      if (e.key === 'Escape') {
+        if (showMcpForm || showMcpImport) {
+          setShowMcpForm(false);
+          setShowMcpImport(false);
+          setEditingServer(null);
+        } else {
+          setSettingsOpen(false);
+        }
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [settingsOpen, setSettingsOpen]);
+  }, [settingsOpen, setSettingsOpen, showMcpForm, showMcpImport]);
 
   if (!settingsOpen) return null;
+
+  const handleAddServer = () => {
+    setEditingServer(null);
+    setShowMcpForm(true);
+  };
+
+  const handleEditServer = (server: McpServer) => {
+    setEditingServer(server);
+    setShowMcpForm(true);
+  };
+
+  const handleFormSave = () => {
+    setShowMcpForm(false);
+    setEditingServer(null);
+    loadServers();
+  };
+
+  const handleFormClose = () => {
+    setShowMcpForm(false);
+    setEditingServer(null);
+  };
+
+  const handleImport = async (servers: Partial<McpServer>[]) => {
+    for (const server of servers) {
+      await addServer(server);
+    }
+    setShowMcpImport(false);
+    loadServers();
+  };
+
+  const handleShowImport = () => {
+    setShowMcpImport(true);
+  };
 
   return (
     <div
@@ -67,6 +117,18 @@ export const SettingsModal: React.FC = () => {
             Agents
           </button>
           <button
+            onClick={() => setActiveTab('mcp')}
+            className={cn(
+              "px-3 py-2 text-xs font-semibold rounded-t-lg transition-colors border-b-2 -mb-px flex items-center gap-2",
+              activeTab === 'mcp'
+                ? "text-[var(--text)] border-[var(--accent)] bg-[var(--hover-bg)]"
+                : "text-[var(--text-muted)] border-transparent hover:text-[var(--text)] hover:bg-[var(--hover-bg)]"
+            )}
+          >
+            <Plugs size={14} weight={activeTab === 'mcp' ? "fill" : "regular"} />
+            MCP
+          </button>
+          <button
             onClick={() => setActiveTab('tools')}
             className={cn(
               "px-3 py-2 text-xs font-semibold rounded-t-lg transition-colors border-b-2 -mb-px flex items-center gap-2",
@@ -95,7 +157,14 @@ export const SettingsModal: React.FC = () => {
         <div className="flex-1 overflow-hidden bg-[var(--bg)] relative p-6">
           {activeTab === 'providers' && <ProvidersTab />}
           {activeTab === 'agents' && <AgentsTab />}
-          
+          {activeTab === 'mcp' && (
+            <McpTab
+              onAddServer={handleAddServer}
+              onEditServer={handleEditServer}
+              onQuickImport={handleShowImport}
+            />
+          )}
+
           {activeTab === 'tools' && (
             <div className="flex flex-col items-center justify-center h-full text-[var(--text-muted)]">
               <Wrench size={32} weight="duotone" className="opacity-50 mb-4" />
@@ -113,6 +182,23 @@ export const SettingsModal: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* MCP Server Form Modal */}
+      {showMcpForm && (
+        <McpServerForm
+          server={editingServer ?? undefined}
+          onClose={handleFormClose}
+          onSave={handleFormSave}
+        />
+      )}
+
+      {/* MCP Quick Import Modal */}
+      {showMcpImport && (
+        <McpQuickImport
+          onImport={handleImport}
+          onClose={() => setShowMcpImport(false)}
+        />
+      )}
     </div>
   );
 };

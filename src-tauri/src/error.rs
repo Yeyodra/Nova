@@ -34,6 +34,14 @@ pub enum AppError {
     ExtractionFailed(String),
     #[error("File not found: {0}")]
     FileNotFound(String),
+    #[error("MCP connection error: {0}")]
+    McpConnection(String),
+    #[error("MCP timeout: {0}")]
+    McpTimeout(String),
+    #[error("MCP execution error: {0}")]
+    McpExecution(String),
+    #[error("MCP server limit: {0}")]
+    McpServerLimit(String),
 }
 
 impl From<AppError> for String {
@@ -75,6 +83,21 @@ impl From<std::io::Error> for AppError {
 impl From<tauri::Error> for AppError {
     fn from(value: tauri::Error) -> Self {
         Self::Tauri(value.to_string())
+    }
+}
+
+impl From<crate::mcp::types::McpError> for AppError {
+    fn from(value: crate::mcp::types::McpError) -> Self {
+        use crate::mcp::types::McpError;
+        match value {
+            McpError::ConnectionFailed(m) | McpError::CommandNotFound(m) => Self::McpConnection(m),
+            McpError::Timeout(m) => Self::McpTimeout(m),
+            McpError::ExecutionError(m)
+            | McpError::ToolNotFound(m)
+            | McpError::ProtocolError(m)
+            | McpError::InvalidResponse(m) => Self::McpExecution(m),
+            McpError::TooManyServers(m) | McpError::TooManyTools(m) => Self::McpServerLimit(m),
+        }
     }
 }
 

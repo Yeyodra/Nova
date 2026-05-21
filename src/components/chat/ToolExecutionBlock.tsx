@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { CaretDown, CaretRight, Terminal, WarningCircle } from '@phosphor-icons/react';
 import { ToolCall } from '@/types';
 import { cn } from '@/lib/utils';
+import { McpToolBadge, parseMcpToolName } from './McpToolBadge';
 
 interface ToolExecutionBlockProps {
   tool: ToolCall;
@@ -21,6 +22,8 @@ export const ToolExecutionBlock: React.FC<ToolExecutionBlockProps> = ({
 }) => {
   const [open, setOpen] = useState(defaultExpanded);
   const isFailed = tool.status === 'failed';
+  const mcpParsed = parseMcpToolName(tool.toolName);
+  const displayName = mcpParsed ? mcpParsed.toolName : tool.toolName;
 
   return (
     <div>
@@ -30,7 +33,8 @@ export const ToolExecutionBlock: React.FC<ToolExecutionBlockProps> = ({
       >
         {open ? <CaretDown size={10} weight="bold" /> : <CaretRight size={10} weight="bold" />}
         <Terminal size={12} weight="duotone" />
-        <span className="font-medium font-mono">{tool.toolName}</span>
+        <span className="font-medium font-mono">{displayName}</span>
+        {mcpParsed && <McpToolBadge serverName={mcpParsed.serverName} />}
         <span
           className={cn(
             'text-[10px] px-1.5 py-0.5 rounded-full',

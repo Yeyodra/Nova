@@ -5,6 +5,7 @@ pub mod models;
 pub mod services;
 pub mod state;
 pub mod tools;
+pub mod mcp;
 
 use state::AppState;
 use tauri::Manager;
@@ -70,7 +71,15 @@ pub fn run() -> Result<(), AppError> {
             commands::compare::get_compare_messages,
             commands::compare::delete_compare_session,
             commands::compare::send_compare_message,
-            commands::compare::cancel_compare
+            commands::compare::cancel_compare,
+            commands::mcp::list_mcp_servers,
+            commands::mcp::add_mcp_server,
+            commands::mcp::update_mcp_server,
+            commands::mcp::remove_mcp_server,
+            commands::mcp::toggle_mcp_server,
+            commands::mcp::test_mcp_connection,
+            commands::mcp::get_mcp_tools,
+            commands::mcp::call_mcp_tool
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();
@@ -111,6 +120,7 @@ pub fn run() -> Result<(), AppError> {
 
             app_handle.manage(app_state);
             app_handle.manage(services::terminal_service::TerminalService::new());
+            app_handle.manage(std::sync::Arc::new(mcp::service::McpService::new()));
 
             // Background orphan cleanup — non-blocking, failures are logged and ignored
             let cleanup_pool = app_handle.state::<AppState>().pool().clone();
