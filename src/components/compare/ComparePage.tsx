@@ -49,7 +49,6 @@ export const ComparePage: React.FC = () => {
 
     // Sync columns with selectedModelIds — keep existing, add new ones
     const store = useCompareStore.getState();
-    const existingKeys = new Set(store.columns.map((c) => `${c.providerId}::${c.modelId}`));
     const syncedColumns: CompareColumnType[] = selectedModelIds.map((compositeKey) => {
       const [providerId, modelId] = compositeKey.split('::');
       const existing = store.columns.find((c) => c.providerId === providerId && c.modelId === modelId);

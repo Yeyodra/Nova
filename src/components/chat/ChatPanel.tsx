@@ -8,13 +8,12 @@ import { StreamingMessage } from './StreamingMessage';
 import { AgentRunCard } from './AgentRunCard';
 import { DragDropZone } from './DragDropZone';
 import { Message, AgentRunWithTools } from '@/types';
-import { cn } from '@/lib/utils';
 
 interface ChatPanelProps {
   onChipClick?: (text: string) => void;
 }
 
-export const ChatPanel: React.FC<ChatPanelProps> = ({ onChipClick }) => {
+export const ChatPanel: React.FC<ChatPanelProps> = ({ onChipClick: _onChipClick }) => {
   const { messages, isStreaming, streamingText } = useChatStore();
   const { agentRuns } = useAgentStore();
   const bottomRef = useRef<HTMLDivElement>(null);

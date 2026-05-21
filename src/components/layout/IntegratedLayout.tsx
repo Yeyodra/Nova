@@ -39,15 +39,6 @@ const CodeReviewPanelPlaceholder = () => (
   </div>
 );
 
-const TerminalPlaceholder = () => (
-  <div className="h-full flex items-center justify-center p-4 text-center text-[var(--text-secondary)]">
-    <div>
-      <p className="text-sm font-semibold mb-2">Integrated Terminal</p>
-      <p className="text-xs">PR #9 - Coming soon</p>
-    </div>
-  </div>
-);
-
 const CodeEditorPlaceholder = () => (
   <div className="h-full flex items-center justify-center p-4 text-center text-[var(--text-secondary)]">
     <div>
