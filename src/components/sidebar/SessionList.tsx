@@ -4,6 +4,7 @@ import { useSessionStore } from '@/stores/useSessionStore';
 import { useProjectStore } from '@/stores/useProjectStore';
 import { useChatStore } from '@/stores/useChatStore';
 import { useAgentStore } from '@/stores/useAgentStore';
+import { useUIStore } from '@/stores/useUIStore';
 import { FolderSimple, ChatCircleText, Trash, CaretRight, Plus } from '@phosphor-icons/react';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { cn } from '@/lib/utils';
@@ -189,7 +190,10 @@ export const SessionList: React.FC<SessionListProps> = ({ searchQuery = '' }) =>
                           ? 'bg-[var(--fill-secondary)] text-[var(--text)]'
                           : 'text-[var(--text-muted)] hover:bg-[var(--fill-tertiary)] hover:text-[var(--text)]'
                       )}
-                      onClick={() => setActiveSessionId(session.id)}
+                      onClick={() => {
+                        setActiveSessionId(session.id);
+                        useUIStore.getState().setMainView('chat');
+                      }}
                     >
                       <ChatCircleText
                         size={16}
