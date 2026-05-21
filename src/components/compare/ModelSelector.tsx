@@ -79,7 +79,7 @@ export const ModelSelector: React.FC = () => {
       setModelChips(chips);
     };
     loadModels();
-  }, [enabledProviders.length]);
+  }, [enabledProviders.length, isOpen]);
 
   // Close dropdown on outside click
   useEffect(() => {
