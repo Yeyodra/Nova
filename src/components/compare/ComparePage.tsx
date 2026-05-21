@@ -13,9 +13,13 @@ export const ComparePage: React.FC = () => {
   const [isSending, setIsSending] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
 
+  const [lastPrompt, setLastPrompt] = useState<string | null>(null);
+
   const handleSend = async (content: string, _attachmentIds?: string[]) => {
     if (selectedModelIds.length < 2) return;
     if (!content.trim()) return;
+
+    setLastPrompt(content);
 
     const providers = useSettingsStore.getState().providers;
 
@@ -141,6 +145,15 @@ export const ComparePage: React.FC = () => {
       <div className="px-4 py-3 border-b border-[var(--border)] shrink-0">
         <ModelSelector />
       </div>
+
+      {/* User prompt bubble */}
+      {lastPrompt && (
+        <div className="px-4 py-3 border-b border-[var(--border)] shrink-0">
+          <div className="max-w-2xl ml-auto bg-[var(--fill-quaternary)] rounded-[var(--radius)] px-4 py-3">
+            <p className="text-[13px] text-[var(--text)] whitespace-pre-wrap">{lastPrompt}</p>
+          </div>
+        </div>
+      )}
 
       {/* Columns area — middle, flex-1 */}
       <div className="flex-1 flex overflow-hidden min-h-0">
