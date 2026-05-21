@@ -18,6 +18,7 @@ const MAX_TOTAL_TOOLS: usize = 200;
 pub struct McpService {
     connections: Arc<Mutex<HashMap<String, Box<dyn McpTransport>>>>,
     tools_cache: Arc<Mutex<HashMap<String, Vec<McpTool>>>>,
+    server_names: Arc<Mutex<HashMap<String, String>>>,
 }
 
 impl Default for McpService {
@@ -31,6 +32,7 @@ impl McpService {
         Self {
             connections: Arc::new(Mutex::new(HashMap::new())),
             tools_cache: Arc::new(Mutex::new(HashMap::new())),
+            server_names: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -249,13 +251,62 @@ impl McpService {
         }
     }
 
-    pub async fn get_all_tools(&self) -> Vec<(String, McpTool)> {
+    /// Connect all enabled MCP servers from the database and list their tools.
+    /// This populates the tools cache so get_all_tools() returns results.
+    /// Errors on individual servers are logged but don't fail the whole operation.
+    pub async fn connect_enabled_servers(&self, pool: &SqlitePool) {
+        let servers = match server_store::list_servers(pool).await {
+            Ok(servers) => servers,
+            Err(e) => {
+                log::error!("[mcp] Failed to load servers from DB: {:?}", e);
+                return;
+            }
+        };
+
+        for server in servers {
+            if !server.enabled {
+                continue;
+            }
+            // Skip if already connected
+            {
+                let conns = self.connections.lock().await;
+                if conns.contains_key(&server.id) {
+                    continue;
+                }
+            }
+            // Cache server name
+            {
+                let mut names = self.server_names.lock().await;
+                names.insert(server.id.clone(), server.name.clone());
+            }
+            // Connect and list tools
+            match self.connect(&server).await {
+                Ok(()) => {
+                    match self.list_tools(&server.id).await {
+                        Ok(tools) => {
+                            log::info!("[mcp] Connected to '{}', found {} tools", server.name, tools.len());
+                        }
+                        Err(e) => {
+                            log::warn!("[mcp] Connected to '{}' but failed to list tools: {:?}", server.name, e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!("[mcp] Failed to connect to '{}': {:?}", server.name, e);
+                }
+            }
+        }
+    }
+
+    pub async fn get_all_tools(&self) -> Vec<(String, String, McpTool)> {
         let cache = self.tools_cache.lock().await;
+        let names = self.server_names.lock().await;
         let mut result = Vec::new();
 
         for (server_id, tools) in cache.iter() {
+            let server_name = names.get(server_id).cloned().unwrap_or_else(|| server_id.clone());
             for tool in tools {
-                result.push((server_id.clone(), tool.clone()));
+                result.push((server_id.clone(), server_name.clone(), tool.clone()));
             }
         }
 

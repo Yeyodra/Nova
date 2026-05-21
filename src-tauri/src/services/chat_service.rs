@@ -409,7 +409,7 @@ async fn send_message_inner(
 
     // Build MCP tool definitions if available (only for OpenAI-compatible providers)
     let mcp_tool_defs = if !provider.uses_anthropic_format() {
-        build_mcp_tool_defs(mcp_service).await
+        build_mcp_tool_defs(mcp_service, db).await
     } else {
         Vec::new()
     };
@@ -703,20 +703,14 @@ pub(crate) async fn send_openai_compatible(
 // ─── MCP Tool Support for Simple Chat ────────────────────────────────────────
 
 /// Build MCP tool definitions in OpenAI format (no builtins — only MCP tools in simple chat)
-async fn build_mcp_tool_defs(mcp_service: &Arc<McpService>) -> Vec<Value> {
+async fn build_mcp_tool_defs(mcp_service: &Arc<McpService>, db: &SqlitePool) -> Vec<Value> {
+    mcp_service.connect_enabled_servers(db).await;
     let mcp_tools = mcp_service.get_all_tools().await;
     if mcp_tools.is_empty() {
         return Vec::new();
     }
     let mut registry = ToolRegistry::new();
-    let tools_with_names: Vec<_> = mcp_tools
-        .into_iter()
-        .map(|(server_id, tool)| {
-            let server_name = server_id.clone();
-            (server_id, server_name, tool)
-        })
-        .collect();
-    registry.set_mcp_tools(tools_with_names);
+    registry.set_mcp_tools(mcp_tools);
     registry.get_all_tools_openai(Vec::new())
 }
 
@@ -940,14 +934,7 @@ async fn execute_mcp_tool_calls(
     // Build registry for resolving tool names
     let mut registry = ToolRegistry::new();
     let mcp_tools = mcp_service.get_all_tools().await;
-    let tools_with_names: Vec<_> = mcp_tools
-        .into_iter()
-        .map(|(server_id, tool)| {
-            let server_name = server_id.clone();
-            (server_id, server_name, tool)
-        })
-        .collect();
-    registry.set_mcp_tools(tools_with_names);
+    registry.set_mcp_tools(mcp_tools);
 
     let mut results = Vec::new();
 

@@ -346,18 +346,10 @@ impl AgentRunner {
     async fn build_openai_tools(&self) -> Vec<Value> {
         let builtin = builtin_openai_tool_definitions();
         if let Some(mcp) = &self.mcp_service {
+            mcp.connect_enabled_servers(&self.db).await;
             let mut registry = ToolRegistry::new();
             let mcp_tools = mcp.get_all_tools().await;
-            // get_all_tools returns Vec<(server_id, McpTool)> — we need server names
-            // For now use server_id as the name prefix (server_store lookup would need pool)
-            let tools_with_names: Vec<_> = mcp_tools
-                .into_iter()
-                .map(|(server_id, tool)| {
-                    let server_name = server_id.clone();
-                    (server_id, server_name, tool)
-                })
-                .collect();
-            registry.set_mcp_tools(tools_with_names);
+            registry.set_mcp_tools(mcp_tools);
             registry.get_all_tools_openai(builtin)
         } else {
             builtin
@@ -368,16 +360,10 @@ impl AgentRunner {
     async fn build_anthropic_tools(&self) -> Vec<Value> {
         let builtin = builtin_anthropic_tool_definitions();
         if let Some(mcp) = &self.mcp_service {
+            mcp.connect_enabled_servers(&self.db).await;
             let mut registry = ToolRegistry::new();
             let mcp_tools = mcp.get_all_tools().await;
-            let tools_with_names: Vec<_> = mcp_tools
-                .into_iter()
-                .map(|(server_id, tool)| {
-                    let server_name = server_id.clone();
-                    (server_id, server_name, tool)
-                })
-                .collect();
-            registry.set_mcp_tools(tools_with_names);
+            registry.set_mcp_tools(mcp_tools);
             registry.get_all_tools_anthropic(builtin)
         } else {
             builtin
@@ -388,15 +374,9 @@ impl AgentRunner {
     async fn build_registry(&self) -> ToolRegistry {
         let mut registry = ToolRegistry::new();
         if let Some(mcp) = &self.mcp_service {
+            mcp.connect_enabled_servers(&self.db).await;
             let mcp_tools = mcp.get_all_tools().await;
-            let tools_with_names: Vec<_> = mcp_tools
-                .into_iter()
-                .map(|(server_id, tool)| {
-                    let server_name = server_id.clone();
-                    (server_id, server_name, tool)
-                })
-                .collect();
-            registry.set_mcp_tools(tools_with_names);
+            registry.set_mcp_tools(mcp_tools);
         }
         registry
     }
