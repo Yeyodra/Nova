@@ -585,7 +585,7 @@ fn build_anthropic_message_content(text: &str, attachments: &[Attachment]) -> Ve
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn send_openai_compatible(
+pub(crate) async fn send_openai_compatible(
     base_url: &str,
     model: &str,
     api_key: Option<&str>,
@@ -682,7 +682,7 @@ async fn send_openai_compatible(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn send_anthropic(
+pub(crate) async fn send_anthropic(
     history: Vec<Message>,
     model: &str,
     api_key: Option<&str>,

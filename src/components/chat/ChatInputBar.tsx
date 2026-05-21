@@ -25,11 +25,13 @@ export interface ChatInputBarHandle {
 interface ChatInputBarProps {
   onSend: (content: string, attachmentIds?: string[]) => void;
   onStop?: () => void;
+  hideAgentSelector?: boolean;
+  hideModelSelector?: boolean;
 }
 
 const MAX_HEIGHT = 200;
 
-export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarProps>(({ onSend, onStop }, ref) => {
+export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarProps>(({ onSend, onStop, hideAgentSelector, hideModelSelector }, ref) => {
   const { isStreaming } = useChatStore();
   const hasRunningAgent = useAgentStore((s) => s.agentRuns.some((r) => r.status === 'running'));
   const isGenerating = isStreaming || hasRunningAgent;
@@ -249,22 +251,24 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
           <div className="flex items-center justify-between px-3 pb-3 pt-1">
             {/* Left actions */}
             <div className="flex items-center gap-1">
-              <Select
-                value={selectedAgentType}
-                onValueChange={(val: any) => setSelectedAgentType(val)}
-                disabled={isGenerating}
-              >
-                <SelectTrigger className="h-8 text-[12px] gap-1 px-2 max-w-[110px] bg-transparent border-none shadow-none text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--fill-tertiary)] rounded-[var(--radius-sm)] transition-colors">
-                  <SelectValue placeholder="Agent" />
-                </SelectTrigger>
-                <SelectContent side="top" align="start">
-                  {SELECTABLE_AGENTS.map((agent) => (
-                    <SelectItem key={agent} value={agent}>
-                      {AGENT_LABELS[agent]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {!hideAgentSelector && (
+                <Select
+                  value={selectedAgentType}
+                  onValueChange={(val: any) => setSelectedAgentType(val)}
+                  disabled={isGenerating}
+                >
+                  <SelectTrigger className="h-8 text-[12px] gap-1 px-2 max-w-[110px] bg-transparent border-none shadow-none text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--fill-tertiary)] rounded-[var(--radius-sm)] transition-colors">
+                    <SelectValue placeholder="Agent" />
+                  </SelectTrigger>
+                  <SelectContent side="top" align="start">
+                    {SELECTABLE_AGENTS.map((agent) => (
+                      <SelectItem key={agent} value={agent}>
+                        {AGENT_LABELS[agent]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
 
               <div className="relative">
                 <button
@@ -343,42 +347,44 @@ export const ChatInputBar = React.forwardRef<ChatInputBarHandle, ChatInputBarPro
         </div>
 
         {/* Runtime config bar — below container, LobeHub style */}
-        <div className="flex items-center justify-between px-1">
-          <div className="flex items-center gap-1">
-            {/* Provider selector */}
-            {providers.filter((p) => p.isEnabled).length > 0 && (
-              <Select value={defaultProviderId ?? undefined} onValueChange={setDefaultProviderId} disabled={isGenerating}>
-                <SelectTrigger className="h-7 text-[12px] gap-1 px-2 bg-transparent border-none shadow-none text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--fill-tertiary)] rounded-[var(--radius-sm)] transition-colors max-w-[140px]">
-                  <SelectValue placeholder="Provider" />
-                </SelectTrigger>
-                <SelectContent side="top" align="start">
-                  {providers.filter((p) => p.isEnabled).map((p) => (
-                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+        {!hideModelSelector && (
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-1">
+              {/* Provider selector */}
+              {providers.filter((p) => p.isEnabled).length > 0 && (
+                <Select value={defaultProviderId ?? undefined} onValueChange={setDefaultProviderId} disabled={isGenerating}>
+                  <SelectTrigger className="h-7 text-[12px] gap-1 px-2 bg-transparent border-none shadow-none text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--fill-tertiary)] rounded-[var(--radius-sm)] transition-colors max-w-[140px]">
+                    <SelectValue placeholder="Provider" />
+                  </SelectTrigger>
+                  <SelectContent side="top" align="start">
+                    {providers.filter((p) => p.isEnabled).map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
 
-            {/* Model selector */}
-            {enabledModels.length > 0 && (
-              <Select value={selectedModelId ?? undefined} onValueChange={setSelectedModelId} disabled={isGenerating}>
-                <SelectTrigger className="h-7 text-[12px] gap-1 px-2 bg-transparent border-none shadow-none text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--fill-tertiary)] rounded-[var(--radius-sm)] transition-colors max-w-[200px]">
-                  <SelectValue placeholder="Model" />
-                </SelectTrigger>
-                <SelectContent side="top" align="start">
-                  {enabledModels.map((m) => (
-                    <SelectItem key={m.modelId} value={m.modelId}>{m.modelId}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
+              {/* Model selector */}
+              {enabledModels.length > 0 && (
+                <Select value={selectedModelId ?? undefined} onValueChange={setSelectedModelId} disabled={isGenerating}>
+                  <SelectTrigger className="h-7 text-[12px] gap-1 px-2 bg-transparent border-none shadow-none text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--fill-tertiary)] rounded-[var(--radius-sm)] transition-colors max-w-[200px]">
+                    <SelectValue placeholder="Model" />
+                  </SelectTrigger>
+                  <SelectContent side="top" align="start">
+                    {enabledModels.map((m) => (
+                      <SelectItem key={m.modelId} value={m.modelId}>{m.modelId}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
 
-          {/* Right side — mode indicator */}
-          <div className="text-[11px] text-[var(--text-subtle)]">
-            Enter to send · Shift+Enter for newline
+            {/* Right side — mode indicator */}
+            <div className="text-[11px] text-[var(--text-subtle)]">
+              Enter to send · Shift+Enter for newline
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

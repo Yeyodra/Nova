@@ -9,6 +9,7 @@ pub mod drawing;
 pub mod shell;
 pub mod tool_call;
 pub mod attachment;
+pub mod compare;
 
 pub use agent_config::AgentConfig;
 pub use drawing::Drawing;
@@ -21,6 +22,7 @@ pub use session::Session;
 pub use shell::ShellInfo;
 pub use tool_call::ToolCall;
 pub use attachment::Attachment;
+pub use compare::{CompareMessage, CompareSession};
 
 
 #[cfg(test)]

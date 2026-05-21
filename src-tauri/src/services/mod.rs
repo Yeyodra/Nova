@@ -1,5 +1,6 @@
 pub mod agent_service;
 pub mod cleanup_service;
+pub mod compare_service;
 pub mod extraction_service;
 pub mod file_service;
 pub mod chat_service;

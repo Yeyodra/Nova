@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 export type Theme = 'dark' | 'light';
-export type MainView = 'chat' | 'canvas';
+export type MainView = 'chat' | 'canvas' | 'compare';
 
 interface UIState {
   leftSidebarOpen: boolean;

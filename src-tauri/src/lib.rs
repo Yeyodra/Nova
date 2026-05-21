@@ -64,7 +64,13 @@ pub fn run() -> Result<(), AppError> {
             commands::file::attach_files,
             commands::file::remove_attachment,
             commands::file::get_attachments_for_message,
-            commands::file::get_attachment_base64
+            commands::file::get_attachment_base64,
+            commands::compare::create_compare_session,
+            commands::compare::list_compare_sessions,
+            commands::compare::get_compare_messages,
+            commands::compare::delete_compare_session,
+            commands::compare::send_compare_message,
+            commands::compare::cancel_compare
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();

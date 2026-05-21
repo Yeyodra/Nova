@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod chat;
+pub mod compare;
 pub mod drawing;
 pub mod file;
 pub mod project;

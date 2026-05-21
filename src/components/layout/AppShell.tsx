@@ -18,6 +18,7 @@ import { useAgentStore } from '@/stores/useAgentStore';
 import { useLayoutStore } from '@/stores/useLayoutStore';
 import { SettingsModal } from '@/components/settings/SettingsModal';
 import { ExcalidrawCanvas } from '@/components/canvas/ExcalidrawCanvas';
+import { ComparePage } from '@/components/compare/ComparePage';
 import { AgentConfig, AgentRunWithTools, AgentType, ChatUsageEvent, Message, PermissionRequest, Project, Provider, ProviderModelConfig, Session, ToolCall } from '@/types';
 import { useFileStore } from '@/stores/useFileStore';
 import { cn } from '@/lib/utils';
@@ -622,7 +623,9 @@ export const AppShell: React.FC = () => {
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
           {/* Chat/Canvas area */}
           <div className={cn('flex flex-col overflow-hidden', bottomPanelOpen && !bottomPanelFullscreen ? 'flex-1 min-h-0' : 'flex-1')}>
-            {mainView === 'chat' ? (
+            {mainView === 'compare' ? (
+              <ComparePage />
+            ) : mainView === 'chat' ? (
               <>
                 <ChatPanel onChipClick={(text) => chatInputRef.current?.prefill(text)} />
                 <ChatInputBar ref={chatInputRef} onSend={handleSend} onStop={handleStop} />
