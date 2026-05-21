@@ -13,9 +13,11 @@ export const ComparePage: React.FC = () => {
   const [isSending, setIsSending] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
 
-  // Reset session when model selection changes (columns get cleared by store)
+  // Reset session when model selection changes (new session needed for different model set)
   useEffect(() => {
-    setSessionId(null);
+    if (columns.length > 0) {
+      setSessionId(null);
+    }
   }, [selectedModelIds]);
 
   const handleSend = async (content: string, attachmentIds?: string[]) => {

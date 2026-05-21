@@ -70,14 +70,14 @@ export const useCompareStore = create<CompareStoreState>((set, get) => ({
     if (selectedModelIds.length >= MAX_MODELS) {
       return false;
     }
-    set({ selectedModelIds: [...selectedModelIds, modelId], columns: [] });
+    set({ selectedModelIds: [...selectedModelIds, modelId] });
     return true;
   },
 
   removeModel: (modelId) => {
     set((state) => ({
       selectedModelIds: state.selectedModelIds.filter((id) => id !== modelId),
-      columns: [],
+      columns: state.columns.filter((col) => `${col.providerId}::${col.modelId}` !== modelId),
     }));
   },
 
