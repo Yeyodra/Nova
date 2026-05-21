@@ -47,25 +47,26 @@ export const ComparePage: React.FC = () => {
       }
     }
 
-    // Initialize columns if first message, otherwise reuse existing
+    // Sync columns with selectedModelIds — keep existing, add new ones
     const store = useCompareStore.getState();
-    if (store.columns.length === 0) {
-      const initialColumns: CompareColumnType[] = selectedModelIds.map((compositeKey) => {
-        const [providerId, modelId] = compositeKey.split('::');
-        const provider = providers.find((p) => p.id === providerId);
-        return {
-          modelId,
-          providerId,
-          modelName: modelId,
-          providerName: provider?.name ?? providerId,
-          isStreaming: false,
-          streamingText: '',
-          messages: [],
-          error: undefined,
-        };
-      });
-      useCompareStore.getState().setColumns(initialColumns);
-    }
+    const existingKeys = new Set(store.columns.map((c) => `${c.providerId}::${c.modelId}`));
+    const syncedColumns: CompareColumnType[] = selectedModelIds.map((compositeKey) => {
+      const [providerId, modelId] = compositeKey.split('::');
+      const existing = store.columns.find((c) => c.providerId === providerId && c.modelId === modelId);
+      if (existing) return existing;
+      const provider = providers.find((p) => p.id === providerId);
+      return {
+        modelId,
+        providerId,
+        modelName: modelId,
+        providerName: provider?.name ?? providerId,
+        isStreaming: false,
+        streamingText: '',
+        messages: [],
+        error: undefined,
+      };
+    });
+    useCompareStore.getState().setColumns(syncedColumns);
 
     // Append user message to all columns and set streaming state
     useCompareStore.getState().appendUserMessage(content);
