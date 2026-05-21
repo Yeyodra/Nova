@@ -1,6 +1,7 @@
 import React from 'react';
 import { X } from '@phosphor-icons/react';
 import { useCompareStore } from '@/stores/useCompareStore';
+import { useUIStore } from '@/stores/useUIStore';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/utils';
 
@@ -32,7 +33,10 @@ export const CompareHistory: React.FC = () => {
               'group flex items-center gap-2 px-3 py-2 rounded-[var(--radius)] cursor-pointer hover:bg-[var(--fill-tertiary)] transition-colors',
               isActive && 'bg-[var(--fill-tertiary)]'
             )}
-            onClick={() => setActiveCompareSession(session.id)}
+            onClick={() => {
+              setActiveCompareSession(session.id);
+              useUIStore.getState().setMainView('compare');
+            }}
           >
             <div className="flex-1 min-w-0">
               <p className="text-[13px] text-[var(--text)] truncate">
