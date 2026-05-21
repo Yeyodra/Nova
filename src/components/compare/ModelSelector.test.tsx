@@ -6,10 +6,10 @@ const mockAddModel = vi.fn(() => true);
 const mockRemoveModel = vi.fn();
 
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn((cmd: string, args?: any) => {
+  invoke: vi.fn((cmd: string, args?: Record<string, unknown>) => {
     if (cmd === 'list_provider_models') {
-      const providerId = args?.providerId;
-      const modelsMap: Record<string, any[]> = {
+      const providerId = (args as { providerId?: string })?.providerId;
+      const modelsMap: Record<string, unknown[]> = {
         p1: [
           { id: 'm1', providerId: 'p1', modelId: 'gpt-4o', enabled: true, maxTokens: 4096, temperature: 0.7, createdAt: '', updatedAt: '' },
           { id: 'm2', providerId: 'p1', modelId: 'gpt-4o-mini', enabled: true, maxTokens: 4096, temperature: 0.7, createdAt: '', updatedAt: '' },
@@ -21,14 +21,14 @@ vi.mock('@tauri-apps/api/core', () => ({
           { id: 'm4', providerId: 'p3', modelId: 'gemini-2.5-pro', enabled: true, maxTokens: 4096, temperature: 0.7, createdAt: '', updatedAt: '' },
         ],
       };
-      return Promise.resolve(modelsMap[providerId] ?? []);
+      return Promise.resolve(modelsMap[providerId ?? ''] ?? []);
     }
     return Promise.resolve([]);
   }),
 }));
 
 vi.mock('@/stores/useSettingsStore', () => ({
-  useSettingsStore: (selector: any) => {
+  useSettingsStore: (selector: (state: Record<string, unknown>) => unknown) => {
     const state = {
       providers: [
         { id: 'p1', name: 'OpenAI', model: 'gpt-4o', isEnabled: true },
@@ -44,7 +44,7 @@ vi.mock('@/stores/useSettingsStore', () => ({
 let mockSelectedModelIds: string[] = [];
 
 vi.mock('@/stores/useCompareStore', () => ({
-  useCompareStore: (selector: any) => {
+  useCompareStore: (selector: (state: Record<string, unknown>) => unknown) => {
     const state = {
       selectedModelIds: mockSelectedModelIds,
       addModel: mockAddModel,
@@ -61,36 +61,82 @@ describe('ModelSelector', () => {
     mockRemoveModel.mockClear();
   });
 
-  it('renders all enabled models from all providers as chips', async () => {
+  it('renders the Add Model button', async () => {
     render(<ModelSelector />);
 
     await waitFor(() => {
-      expect(screen.getByText('OpenAI · gpt-4o')).toBeInTheDocument();
+      expect(screen.getByText('Add Model')).toBeInTheDocument();
     });
-
-    // OpenAI has 2 models
-    expect(screen.getByText('OpenAI · gpt-4o')).toBeInTheDocument();
-    expect(screen.getByText('OpenAI · gpt-4o-mini')).toBeInTheDocument();
-    // Anthropic has 1 model
-    expect(screen.getByText('Anthropic · claude-sonnet-4')).toBeInTheDocument();
-    // Google has 1 model
-    expect(screen.getByText('Google · gemini-2.5-pro')).toBeInTheDocument();
-    // Disabled provider should not appear
-    expect(screen.queryByText('Ollama · llama3')).not.toBeInTheDocument();
   });
 
-  it('clicking an unselected chip calls addModel with composite key', async () => {
+  it('opens dropdown when Add Model is clicked and shows models grouped by provider', async () => {
     render(<ModelSelector />);
 
     await waitFor(() => {
-      expect(screen.getByText('OpenAI · gpt-4o')).toBeInTheDocument();
+      expect(screen.getByText('Add Model')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('OpenAI · gpt-4o'));
+    fireEvent.click(screen.getByText('Add Model'));
+
+    // Provider group headers should appear
+    expect(screen.getByText('Anthropic')).toBeInTheDocument();
+    expect(screen.getByText('Google')).toBeInTheDocument();
+    expect(screen.getByText('OpenAI')).toBeInTheDocument();
+
+    // Model IDs should appear in dropdown
+    expect(screen.getByText('gpt-4o')).toBeInTheDocument();
+    expect(screen.getByText('gpt-4o-mini')).toBeInTheDocument();
+    expect(screen.getByText('claude-sonnet-4')).toBeInTheDocument();
+    expect(screen.getByText('gemini-2.5-pro')).toBeInTheDocument();
+
+    // Disabled provider should not appear
+    expect(screen.queryByText('Ollama')).not.toBeInTheDocument();
+    expect(screen.queryByText('llama3')).not.toBeInTheDocument();
+  });
+
+  it('clicking a model in dropdown calls addModel with composite key', async () => {
+    render(<ModelSelector />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Add Model')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Add Model'));
+    fireEvent.click(screen.getByText('gpt-4o'));
+
     expect(mockAddModel).toHaveBeenCalledWith('p1::gpt-4o');
   });
 
-  it('clicking a selected chip calls removeModel with composite key', async () => {
+  it('clicking an already-selected model in dropdown calls removeModel', async () => {
+    mockSelectedModelIds = ['p1::gpt-4o'];
+    render(<ModelSelector />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Add Model')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Add Model'));
+    fireEvent.click(screen.getByText('gpt-4o'));
+
+    expect(mockRemoveModel).toHaveBeenCalledWith('p1::gpt-4o');
+  });
+
+  it('shows selected models as removable chips', async () => {
+    mockSelectedModelIds = ['p1::gpt-4o', 'p2::claude-sonnet-4'];
+    render(<ModelSelector />);
+
+    await waitFor(() => {
+      expect(screen.getByText('OpenAI · gpt-4o')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('Anthropic · claude-sonnet-4')).toBeInTheDocument();
+
+    // Remove buttons should exist
+    expect(screen.getByLabelText('Remove OpenAI · gpt-4o')).toBeInTheDocument();
+    expect(screen.getByLabelText('Remove Anthropic · claude-sonnet-4')).toBeInTheDocument();
+  });
+
+  it('clicking X on a chip calls removeModel', async () => {
     mockSelectedModelIds = ['p1::gpt-4o'];
     render(<ModelSelector />);
 
@@ -98,28 +144,34 @@ describe('ModelSelector', () => {
       expect(screen.getByText('OpenAI · gpt-4o')).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText('OpenAI · gpt-4o'));
+    fireEvent.click(screen.getByLabelText('Remove OpenAI · gpt-4o'));
     expect(mockRemoveModel).toHaveBeenCalledWith('p1::gpt-4o');
   });
 
-  it('disables unselected chips when 3 models are selected', async () => {
+  it('disables Add Model button and shows count when 3 models selected', async () => {
     mockSelectedModelIds = ['p1::gpt-4o', 'p1::gpt-4o-mini', 'p2::claude-sonnet-4'];
     render(<ModelSelector />);
 
     await waitFor(() => {
-      expect(screen.getByText('OpenAI · gpt-4o')).toBeInTheDocument();
+      expect(screen.getByText('3/3 selected')).toBeInTheDocument();
     });
 
-    // Selected chips are not disabled
-    const openaiChip = screen.getByText('OpenAI · gpt-4o');
-    const miniChip = screen.getByText('OpenAI · gpt-4o-mini');
-    const anthropicChip = screen.getByText('Anthropic · claude-sonnet-4');
-    const googleChip = screen.getByText('Google · gemini-2.5-pro');
+    const addButton = screen.getByText('3/3 selected').closest('button');
+    expect(addButton).toBeDisabled();
+  });
 
-    expect(openaiChip).not.toBeDisabled();
-    expect(miniChip).not.toBeDisabled();
-    expect(anthropicChip).not.toBeDisabled();
-    // Unselected chip should be disabled at max
-    expect(googleChip).toBeDisabled();
+  it('closes dropdown on outside click', async () => {
+    render(<ModelSelector />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Add Model')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText('Add Model'));
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+
+    // Click outside
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
   });
 });
