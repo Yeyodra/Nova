@@ -537,20 +537,53 @@ Available tools: ${toolNames}`,
   return result;
 }
 
+/**
+ * Derive a stable session_id from conversation messages.
+ * Qoder server uses session_id as the key for server-side persisted conversation
+ * state (context, tool call records, compaction boundaries). A random UUID per
+ * request causes the server to treat every request as a brand-new conversation,
+ * making the model "forget" prior context and repeat itself.
+ *
+ * By hashing all message content into a deterministic UUID, the same
+ * conversation always maps to the same session_id while different conversations
+ * get different IDs.
+ */
+function deriveSessionId(messages: ChatCompletionRequest["messages"]): string {
+  const hash = crypto.createHash("sha256");
+  for (const msg of messages) {
+    hash.update(msg.role + ":");
+    if (typeof msg.content === "string") {
+      hash.update(msg.content);
+    } else if (Array.isArray(msg.content)) {
+      for (const block of msg.content as any[]) {
+        if (block?.type === "text" && typeof block.text === "string") {
+          hash.update(block.text);
+        }
+      }
+    }
+    hash.update("\n");
+  }
+  const hex = hash.digest("hex").slice(0, 32);
+  // Format as valid UUID v4
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
 function buildChatBody(request: ChatCompletionRequest, tokens: QoderTokens): any {
   const prompt = extractLatestUserPrompt(request);
   const images = extractLatestUserImages(request);
   const cfg = MODEL_CONFIGS[request.model] || QODER_MODELS[0]!;
   const reqId = crypto.randomUUID();
+  const chatRecordId = crypto.randomUUID();
+  const sessionId = deriveSessionId(request.messages);
   const hasIncomingTools = Array.isArray(request.tools) && request.tools.length > 0;
 
   const template = loadTemplate();
   const body: any = template ? JSON.parse(JSON.stringify(template)) : {};
 
   body.request_id = reqId;
-  body.chat_record_id = reqId;
+  body.chat_record_id = chatRecordId;
   body.request_set_id = crypto.randomUUID();
-  body.session_id = crypto.randomUUID();
+  body.session_id = sessionId;
   body.stream = true;
   body.aliyun_user_type = tokens.userType || "personal_standard";
 
