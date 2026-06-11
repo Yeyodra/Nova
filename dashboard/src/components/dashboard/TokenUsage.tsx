@@ -40,37 +40,54 @@ const defaultStats: TokenStats = {
 const defaultModelUsage: ModelUsage[] = [];
 
 /**
- * Backend buckets usage by the browser timezone and returns each bucket start as UTC ISO.
- * The browser uses local-time bucket generation so daily/monthly ranges align with the UI date.
+ * How many hours of data to request from the backend for each period.
+ *
+ * For "1d" we request 48 h so that the current local-timezone day is fully
+ * covered regardless of the user's UTC offset (e.g. UTC+14 needs data from
+ * up to 38 h ago to fill the 00:00 local bucket).
  */
-
-function getChartHours(period: string) {
-  if (period === "1d") return 24;
-  if (period === "7d") return 24 * 7;
-  if (period === "30d") return 24 * 30;
-  return null;
+function getChartHours(period: string): number | null {
+  if (period === "1d") return 48;
+  if (period === "7d") return 24 * 8; // 8 days to cover timezone edges
+  if (period === "30d") return 24 * 31;
+  return null; // "all"
 }
 
 function modelKey(row: { provider?: string; model?: string }) {
   return `${row.provider || "unknown"}/${row.model || "unknown"}`;
 }
 
-/** Truncate a Date to the start of its hour in the user's timezone */
+// ─── Local-timezone bucket helpers ──────────────────────────────────────────
+
+/** Truncate a Date to the start of its hour in the user's local timezone */
 function truncHourLocal(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours()).getTime();
 }
 
-/** Truncate a Date to the start of its day in the user's timezone */
+/** Truncate a Date to the start of its day in the user's local timezone */
 function truncDayLocal(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
-/** Truncate a Date to the start of its month in the user's timezone */
+/** Truncate a Date to the start of its month in the user's local timezone */
 function truncMonthLocal(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth(), 1).getTime();
 }
 
-/** Convert a backend hour key (ISO UTC) to a numeric bucket key (epoch ms) */
+/**
+ * Snap a UTC epoch (from the backend bucket key) to the corresponding
+ * local-timezone bucket epoch.  This bridges the gap between the backend
+ * (which always buckets in UTC) and the frontend (which displays in the
+ * user's local timezone).
+ */
+function snapToLocalBucket(utcEpoch: number, period: string): number {
+  const d = new Date(utcEpoch);
+  if (period === "1d") return truncHourLocal(d);
+  if (period === "7d" || period === "30d") return truncDayLocal(d);
+  return truncMonthLocal(d);
+}
+
+/** Convert a backend hour key (ISO UTC) to a numeric epoch (ms) */
 function parseBucketKey(isoKey: string): number {
   return parseUtcDate(isoKey).getTime();
 }
@@ -87,59 +104,79 @@ function formatLabel(epoch: number, period: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-/** Generate ordered bucket epochs for the chart */
-function generateBuckets(period: string, hours: number): number[] {
-  const now = Date.now();
+/**
+ * Generate ordered bucket epochs for the chart, all in the user's local
+ * timezone so labels read naturally.
+ *
+ * - **1d** — 24 hourly buckets for *today* (00:00 → 23:00 local).
+ * - **7d** — 7 daily buckets ending today.
+ * - **30d** — 30 daily buckets ending today.
+ * - **all** — last 12 monthly buckets.
+ */
+function generateBuckets(period: string): number[] {
+  const now = new Date();
   const buckets: number[] = [];
 
   if (period === "1d") {
-    const start = truncHourLocal(new Date(now - hours * 3600_000));
-    for (let i = 0; i <= hours; i++) {
-      buckets.push(start + i * 3600_000);
+    // Today: 00:00 local → 23:00 local (24 hourly slots)
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    for (let i = 0; i < 24; i++) {
+      buckets.push(todayStart + i * 3600_000);
     }
     return buckets;
   }
 
   if (period === "7d" || period === "30d") {
     const days = period === "7d" ? 7 : 30;
-    const start = new Date(truncDayLocal(new Date(now - days * 86400_000)));
-    for (let i = 0; i <= days; i++) {
-      buckets.push(new Date(start.getFullYear(), start.getMonth(), start.getDate() + i).getTime());
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+      buckets.push(d.getTime());
     }
     return buckets;
   }
 
-  // all
-  const d = new Date();
+  // "all" — last 12 months
   for (let i = 11; i >= 0; i--) {
-    buckets.push(truncMonthLocal(new Date(d.getFullYear(), d.getMonth() - i, 1)));
+    buckets.push(new Date(now.getFullYear(), now.getMonth() - i, 1).getTime());
   }
   return buckets;
 }
 
-function rowsToModelChart(rows: Array<{ hour: string; provider?: string; model?: string; tokens?: number }>, period: string, hours: number) {
+/**
+ * Map backend rows (UTC-bucketed) into local-timezone chart data.
+ *
+ * Multiple UTC buckets can map to the same local bucket (e.g. UTC hours
+ * 17:00–23:00 on day N all fall into local day N+1 for UTC+7), so values
+ * are **summed** rather than replaced.
+ */
+function rowsToModelChart(
+  rows: Array<{ hour: string; provider?: string; model?: string; tokens?: number }>,
+  period: string,
+) {
   const models = Array.from(new Set(rows.map(modelKey)));
-  const bucketEpochs = generateBuckets(period, hours);
-  const bucketSet = new Set(bucketEpochs);
+  const bucketEpochs = generateBuckets(period);
 
-  // Initialize all buckets
+  // Initialise all buckets with zero values
   const byEpoch = new Map<number, Record<string, number | string>>();
   for (const epoch of bucketEpochs) {
-    const entry: Record<string, number | string> = { hour: String(epoch), label: formatLabel(epoch, period) };
+    const entry: Record<string, number | string> = {
+      hour: String(epoch),
+      label: formatLabel(epoch, period),
+    };
     for (const model of models) entry[model] = 0;
     byEpoch.set(epoch, entry);
   }
 
-  // Map backend data to buckets
+  // Map backend data → local buckets (snap + accumulate)
   for (const row of rows) {
-    const epoch = parseBucketKey(row.hour);
+    const utcEpoch = parseBucketKey(row.hour);
+    const localEpoch = snapToLocalBucket(utcEpoch, period);
     const model = modelKey(row);
-    // Find the matching bucket (exact match since backend truncates the same way)
-    const bucket = byEpoch.get(epoch);
+    const bucket = byEpoch.get(localEpoch);
     if (bucket) {
       bucket[model] = Number(bucket[model] || 0) + Number(row.tokens || 0);
     }
-    // Data outside the bucket range is simply ignored (old data)
+    // Data outside the generated bucket range is simply ignored (old data)
   }
 
   return bucketEpochs.map((epoch) => byEpoch.get(epoch)!);
@@ -176,7 +213,7 @@ export default function TokenUsage({
       ]);
 
       // Update chart data
-      setChartData(rowsToModelChart(usageRes.data || [], period, hours || 24 * 365));
+      setChartData(rowsToModelChart(usageRes.data || [], period));
 
       // Update stats cards from filtered response
       setFilteredStats({
