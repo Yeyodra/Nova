@@ -43,6 +43,7 @@ const navSections: NavSection[] = [
     items: [
       { label: "Dashboard", path: "/", icon: LayoutDashboard },
       { label: "Accounts", path: "/accounts", icon: Users },
+      { label: "Email Filter", path: "/email-provider-filter", icon: Filter },
       { label: "Models", path: "/models", icon: Cpu },
     ],
   },

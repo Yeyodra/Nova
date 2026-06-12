@@ -17,6 +17,7 @@ const VccPool = lazy(() => import("./pages/VccPool"));
 const ProxyPool = lazy(() => import("./pages/ProxyPool"));
 const ImageStudio = lazy(() => import("./pages/ImageStudio"));
 const FilterRules = lazy(() => import("./pages/FilterRules"));
+const EmailProviderFilter = lazy(() => import("./pages/EmailProviderFilter"));
 const Integration = lazy(() => import("./pages/Integration"));
 const Tunnel = lazy(() => import("./pages/Tunnel"));
 const CodexOAuthCallback = lazy(() => import("./pages/CodexOAuthCallback"));
@@ -70,6 +71,7 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/accounts" element={<Accounts />} />
           <Route path="/accounts/:provider" element={<AccountList />} />
+          <Route path="/email-provider-filter" element={<EmailProviderFilter />} />
           <Route path="/models" element={<Models />} />
           <Route path="/api-key" element={<ApiKey />} />
           <Route path="/requests" element={<Requests />} />
