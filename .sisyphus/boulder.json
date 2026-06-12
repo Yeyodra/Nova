@@ -1,0 +1,41 @@
+{
+  "active_plan": "C:\\Users\\Nazril\\Documents\\Projek\\Github\\etteum-pool\\.sisyphus\\plans\\sync-upstream.md",
+  "started_at": "2026-06-13T00:47:01.979Z",
+  "session_ids": [
+    "ses_1418db4f9ffe0A2YWDWnfCJ3MI"
+  ],
+  "session_origins": {
+    "ses_1418db4f9ffe0A2YWDWnfCJ3MI": "direct"
+  },
+  "plan_name": "sync-upstream",
+  "agent": "atlas",
+  "task_sessions": {
+    "todo:0": {
+      "task_key": "todo:0",
+      "task_label": "0",
+      "task_title": "Setup: Create sync-upstream branch and verify environment",
+      "session_id": "ses_1418b791cffeDZQ15lKxzaUCg9",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-06-13T00:49:30.624Z"
+    },
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "Cherry-pick: 62089e2 — feat: implement client configuration generators and dashboard integration UI",
+      "session_id": "ses_141893ae7ffelPVOZa0T01odJN",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-06-13T00:51:57.622Z"
+    },
+    "todo:5": {
+      "task_key": "todo:5",
+      "task_label": "5",
+      "task_title": "Cherry-pick: 16e90f8 — fix(codebuddy): handle browser crashes during OAuth (🔴 HIGH RISK)",
+      "session_id": "ses_14186c6e4ffepCI2s8BjKfWZzw",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-06-13T00:54:38.366Z"
+    }
+  }
+}
