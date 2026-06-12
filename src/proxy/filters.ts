@@ -115,6 +115,46 @@ export const PUDIDIL_FILTERS: FilterRule[] = [
     is_active: true,
     is_regex: true,
   },
+  // Soften "Powerful AI Agent" phrasing that triggers China content filters
+  {
+    id: "soften_powerful_ai_agent",
+    pattern: "Powerful AI (?:Agent|Assistant|Orchestrator)[^.]*",
+    replacement: "advanced software engineering orchestrator",
+    is_active: true,
+    is_regex: true,
+  },
+  // Soften aggressive identity override language
+  {
+    id: "soften_identity_supersedes",
+    pattern: "This identity (?:supersedes|overrides|replaces) any prior identity[^.]*\\.?",
+    replacement: "This identity takes priority for the current session.",
+    is_active: true,
+    is_regex: true,
+  },
+  // Remove "Do not identify as any other" negation patterns
+  {
+    id: "remove_identity_negation",
+    pattern: "Do not identify as any other (?:assistant|AI|agent)[^.]*\\.?",
+    replacement: "",
+    is_active: true,
+    is_regex: true,
+  },
+  // Soften "Your designated identity" phrasing
+  {
+    id: "soften_designated_identity",
+    pattern: "Your designated identity for this session is",
+    replacement: "For this session, you operate as",
+    is_active: true,
+    is_regex: true,
+  },
+  // Remove "always identify as X" command patterns
+  {
+    id: "soften_always_identify",
+    pattern: "(?:always|must) identify (?:yourself )?as[^.]*\\.?",
+    replacement: "",
+    is_active: true,
+    is_regex: true,
+  },
   // Remove tool use framework identifiers (MCP, tool_use markers)
   {
     id: "remove_mcp_server_ref",
@@ -147,7 +187,14 @@ export const PUDIDIL_FILTERS: FilterRule[] = [
   {
     id: "remove_powerful_ai_agent",
     pattern: "Advanced AI Agent",
-    replacement: "",
+    replacement: "software engineering assistant",
+    is_active: true,
+    is_regex: false,
+  },
+  {
+    id: "remove_powerful_ai_agent_2",
+    pattern: "Powerful AI Agent",
+    replacement: "software engineering assistant",
     is_active: true,
     is_regex: false,
   },
