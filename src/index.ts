@@ -16,6 +16,7 @@ import { PUDIDIL_FILTERS } from "./proxy/filters";
 import { loadFilterCache } from "./proxy/filter-cache";
 import { ensureModelMappingTable, seedModelMappings, loadModelMappingCache } from "./proxy/model-mapping";
 import { refreshByokModels } from "./proxy/providers/registry";
+import { initTunnel } from "./lib/tunnel/watchdog";
 
 // Run database migrations on startup
 await runMigrations();
@@ -62,6 +63,11 @@ try {
 
 // Start auto-warmup scheduler (reads settings from DB)
 await autoWarmupScheduler.start();
+
+// Initialize tunnel system (fire-and-forget, never blocks startup)
+initTunnel().catch((e) => {
+  console.error("[Tunnel] init failed:", e instanceof Error ? e.message : e);
+});
 
 // Create Hono app
 const app = new Hono();

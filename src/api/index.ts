@@ -10,6 +10,8 @@ import { filtersRouter } from "./filters";
 import { binApi } from "./bin";
 import { integrationRouter } from "./integration";
 import { oauthRouter } from "./oauth";
+import { healthRouter } from "./health";
+import { tunnelRouter } from "./tunnel";
 
 export const apiRouter = new Hono();
 
@@ -29,11 +31,5 @@ apiRouter.get("/providers", (c) => {
   return c.json({ data: ["kiro", "kiro-pro", "codebuddy", "canva", "codex", "qoder"] });
 });
 
-// Health check
-apiRouter.get("/health", (c) => {
-  return c.json({
-    status: "ok",
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-  });
-});
+apiRouter.route("/health", healthRouter);
+apiRouter.route("/tunnel", tunnelRouter);

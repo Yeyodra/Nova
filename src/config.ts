@@ -7,19 +7,19 @@ export const config = {
   dashboardPort: Number(process.env.DASHBOARD_PORT) || 1931,
   apiKey: process.env.API_KEY || "pool-proxy-secret-key",
   databasePath: process.env.DATABASE_PATH || path.join(projectRoot, "data/poolprox3.db"),
-  authScriptPath:
-    process.env.AUTH_SCRIPT_PATH ||
-    path.join(projectRoot, "scripts/auth/login.py"),
-  pythonPath:
+  authScriptPath: path.resolve(
+    projectRoot,
+    process.env.AUTH_SCRIPT_PATH || "scripts/auth/login.py",
+  ),
+  pythonPath: path.resolve(
+    projectRoot,
     process.env.PYTHON_PATH ||
-    path.join(
-      projectRoot,
-      "scripts/auth/.venv",
-      process.platform === "win32" ? "Scripts/python.exe" : "bin/python",
-    ),
-  authScriptCwd:
-    process.env.AUTH_SCRIPT_CWD ||
-    path.join(projectRoot, "scripts/auth"),
+      path.join("scripts/auth/.venv", process.platform === "win32" ? "Scripts/python.exe" : "bin/python"),
+  ),
+  authScriptCwd: path.resolve(
+    projectRoot,
+    process.env.AUTH_SCRIPT_CWD || "scripts/auth",
+  ),
   proxyUrl: process.env.PROXY_URL || "",
   encryptionKey:
     process.env.ENCRYPTION_KEY || "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
@@ -38,6 +38,10 @@ export const config = {
   browserEngine: process.env.BROWSER_ENGINE || "camoufox",
   captchaService: process.env.CAPTCHA_SERVICE || "none",
   captchaApiKey: process.env.CAPTCHA_API_KEY || "",
+  // Cloudflare Tunnel
+  tunnelEnabled: process.env.TUNNEL_ENABLED === "true",
+  tunnelToken: process.env.TUNNEL_TOKEN || "",
+  tunnelProtocol: process.env.TUNNEL_PROTOCOL || "http2",
   // Providers: kiro, kiro-pro, codebuddy, canva, codex, qoder
   providers: ["kiro", "kiro-pro", "codebuddy", "canva", "codex", "qoder"] as const,
 } as const;
