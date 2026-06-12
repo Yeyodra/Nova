@@ -1,4 +1,5 @@
-const root = new URL("..", import.meta.url).pathname;
+const root = new URL("..", import.meta.url).pathname.replace(/^\/([A-Z]:)/, "$1");
+const bunPath = process.execPath;
 const port = process.env.PORT || "1930";
 const dashboardPort = process.env.DASHBOARD_PORT || "1931";
 
@@ -68,10 +69,11 @@ console.log(`Backend:   http://localhost:${port}`);
 console.log(`Dashboard: http://localhost:${dashboardPort}`);
 console.log(`API Key:   ${process.env.API_KEY || "pool-proxy-secret-key"}\n`);
 
-children.push(spawnProcess("backend", ["bun", "src/index.ts"]));
+children.push(spawnProcess("backend", [bunPath, "src/index.ts"]));
 children.push(
   spawnProcess("dashboard", [
-    "bunx",
+    bunPath,
+    "x",
     "vite",
     "--host",
     "0.0.0.0",
