@@ -462,19 +462,21 @@ export class CodeBuddyProvider extends BaseProvider {
 
     const controller = new AbortController();
     try {
+      const validateHeaders = this.buildCodeBuddyBaseHeaders();
+      validateHeaders["authorization"] = `Bearer ${apiKey}`;
+      validateHeaders["x-conversation-request-id"] = `r-3742-${Date.now()}`;
+
       const response = await fetch(`${this.baseUrl}/v2/chat/completions`, {
         method: "POST",
         signal: controller.signal,
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`,
-          "X-Requested-With": "XMLHttpRequest",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        },
+        headers: validateHeaders,
         body: JSON.stringify({
           model: "gpt-5.5",
-          messages: [{ role: "user", content: "hi" }],
-          max_tokens: 100,
+          messages: [
+            { role: "system", content: "You are a helpful assistant." },
+            { role: "user", content: "hi" },
+          ],
+          max_tokens: 10,
           stream: true,
         }),
       });
@@ -497,16 +499,33 @@ export class CodeBuddyProvider extends BaseProvider {
     return Boolean(tokens.api_key || tokens.access_token || tokens.session_token || tokens.web_cookie || tokens.cookies);
   }
 
-  private buildAuthHeaders(tokens: CodeBuddyTokens, json = true): Record<string, string> {
-    const headers: Record<string, string> = {
-      Accept: "application/json, text/plain, */*",
-      "X-Requested-With": "XMLHttpRequest",
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+  private buildCodeBuddyBaseHeaders(): Record<string, string> {
+    return {
+      "User-Agent": "CodeBuddyIDE/0.1.14",
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "x-stainless-lang": "js",
+      "x-stainless-package-version": "4.96.0",
+      "x-stainless-os": "Windows",
+      "x-stainless-arch": "x64",
+      "x-stainless-runtime": "node",
+      "x-stainless-runtime-version": "v20.19.0",
+      "x-domain": "www.codebuddy.ai",
+      "x-agent-intent": "craft",
+      "x-stainless-retry-count": "0",
+      "x-stainless-timeout": "600",
     };
-    if (json) headers["Content-Type"] = "application/json";
+  }
+
+  private buildAuthHeaders(tokens: CodeBuddyTokens, json = true): Record<string, string> {
+    const headers = this.buildCodeBuddyBaseHeaders();
+    if (!json) delete headers["Content-Type"];
 
     const apiKey = tokens.api_key || tokens.access_token || tokens.session_token;
-    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+    if (apiKey) {
+      headers["authorization"] = `Bearer ${apiKey}`;
+      headers["Authorization"] = `Bearer ${apiKey}`;
+    }
     if (tokens.web_cookie) headers.Cookie = tokens.web_cookie;
     else if (tokens.cookies) headers.Cookie = tokens.cookies;
     if (tokens.csrf_token) headers["X-CSRF-Token"] = tokens.csrf_token;
@@ -558,17 +577,14 @@ export class CodeBuddyProvider extends BaseProvider {
     stream: boolean
   ): Promise<Response> {
     const headers: Record<string, string> = {
+      ...this.buildCodeBuddyBaseHeaders(),
       "Accept": stream ? "text/event-stream, application/json, */*" : "application/json",
-      "Content-Type": "application/json",
       "X-Requested-With": "XMLHttpRequest",
       "X-Conversation-ID": crypto.randomUUID(),
       "X-Conversation-Request-ID": crypto.randomUUID().replace(/-/g, ""),
       "X-Conversation-Message-ID": crypto.randomUUID().replace(/-/g, ""),
       "X-Request-ID": crypto.randomUUID().replace(/-/g, ""),
-      "X-Domain": "www.codebuddy.ai",
-      "X-Product": "SaaS",
-      // Use browser-like User-Agent to avoid stricter content moderation for CLI/Agent traffic
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      "x-conversation-request-id": `r-3742-${Date.now()}`,
     };
 
     const apiKey = tokens.api_key || tokens.access_token || tokens.session_token;
@@ -726,10 +742,18 @@ export class CodeBuddyProvider extends BaseProvider {
       cleanedMessages.push(msg);
     }
 
+    // CodeBuddy requires minimum 2 messages (system + user)
+    if (cleanedMessages.length === 1 && cleanedMessages[0].role === "user") {
+      cleanedMessages.unshift({
+        role: "system",
+        content: "You are a helpful assistant.",
+      });
+    }
+
     const body: Record<string, unknown> = {
       messages: cleanedMessages,
       model: actualModel,
-      stream,
+      stream: true, // CodeBuddy requires streaming
     };
 
     // Only add max_tokens if explicitly provided and reasonable
