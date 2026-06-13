@@ -8,10 +8,11 @@ import { authRouter } from "./auth/index";
 import { proxyRouter } from "./proxy/index";
 import { websocketHandler, getClientCount } from "./ws/index";
 import { isValidApiKey } from "./api/keys";
+import { verifyDashboardToken, rotateJwtSecret } from "./utils/jwt";
 import { autoWarmupScheduler } from "./auth/warmup-scheduler";
 import { db } from "./db/index";
-import { filterRules } from "./db/schema";
-import { sql } from "drizzle-orm";
+import { filterRules, settings } from "./db/schema";
+import { sql, eq } from "drizzle-orm";
 import { PUDIDIL_FILTERS } from "./proxy/filters";
 import { loadFilterCache } from "./proxy/filter-cache";
 import { ensureModelMappingTable, seedModelMappings, loadModelMappingCache } from "./proxy/model-mapping";
@@ -20,6 +21,13 @@ import { initTunnel } from "./lib/tunnel/watchdog";
 
 // Run database migrations on startup
 await runMigrations();
+
+// Password reset check
+if (process.env.RESET_PASSWORD === "true") {
+  await db.delete(settings).where(eq(settings.key, "admin_password_hash"));
+  await rotateJwtSecret();
+  console.log("⚠️  Password has been reset. Visit dashboard to set new password.");
+}
 
 // Seed filter rules from PUDIDIL_FILTERS if table is empty (first boot only)
 try {
@@ -99,19 +107,33 @@ app.use("/v1/*", async (c, next) => {
   await next();
 });
 
-// API Key authentication for management API
+// JWT authentication for dashboard/management API
 app.use("/api/*", async (c, next) => {
-  // Allow health check, info, and key validation without auth
-  if (c.req.path === "/api/health" || c.req.path === "/api/info" || c.req.path === "/api/keys/test") {
+  // Exempt routes — no auth required
+  if (
+    c.req.path === "/api/health" ||
+    c.req.path === "/api/info" ||
+    c.req.path === "/api/keys/test" ||
+    c.req.path.startsWith("/api/dashboard-auth")
+  ) {
     await next();
     return;
   }
 
+  // JWT authentication for dashboard API
   const authHeader = c.req.header("Authorization");
-  const apiKeyQuery = c.req.query("api_key");
-  const token = authHeader?.replace("Bearer ", "") || apiKeyQuery;
+  const token = authHeader?.replace("Bearer ", "");
 
-  if (!token || !(await isValidApiKey(token))) {
+  if (!token) {
+    return c.json(
+      { error: { message: "Unauthorized", type: "auth_error" } },
+      401
+    );
+  }
+
+  try {
+    await verifyDashboardToken(token);
+  } catch {
     return c.json(
       { error: { message: "Unauthorized", type: "auth_error" } },
       401
