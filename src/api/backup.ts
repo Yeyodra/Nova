@@ -79,34 +79,31 @@ restoreRouter.post("/", async (c) => {
           if (strategy === "skip") {
             skipped_accounts.push(label);
           } else {
-            // overwrite
+            // overwrite — credentials + preferences only, reset runtime state
             await tx
               .update(accounts)
               .set({
                 password: acc.password,
                 tokens: acc.tokens ?? null,
                 metadata: acc.metadata ?? null,
-                status: acc.status || "pending",
                 enabled: acc.enabled ?? true,
-                quotaLimit: acc.quotaLimit ?? 0,
-                quotaRemaining: acc.quotaRemaining ?? 0,
-                quotaResetAt: acc.quotaResetAt ? new Date(acc.quotaResetAt) : null,
+                status: "pending",
+                quotaLimit: 0,
+                quotaRemaining: 0,
+                quotaResetAt: null,
               })
               .where(and(eq(accounts.provider, acc.provider), eq(accounts.email, acc.email)));
             overwritten_accounts.push(label);
           }
         } else {
-          // Insert new
+          // Insert new — credentials only, runtime state starts fresh
           await tx.insert(accounts).values({
             provider: acc.provider,
             email: acc.email,
             password: acc.password,
-            status: acc.status || "pending",
+            status: "pending",
             enabled: acc.enabled ?? true,
             tokens: acc.tokens ?? null,
-            quotaLimit: acc.quotaLimit ?? 0,
-            quotaRemaining: acc.quotaRemaining ?? 0,
-            quotaResetAt: acc.quotaResetAt ? new Date(acc.quotaResetAt) : null,
             metadata: acc.metadata ?? null,
             createdAt: acc.createdAt ? new Date(acc.createdAt) : new Date(),
           });
@@ -158,18 +155,14 @@ backupRouter.get("/", async (c) => {
   hasher.update(config.encryptionKey);
   const keyFingerprint = hasher.digest("hex").slice(0, 8);
 
-  // Map accounts to export format (exclude: id, lastUsedAt, lastLoginAt, updatedAt, errorMessage)
+  // Map accounts to export format (credentials + preferences only, no runtime state)
   const exported = rows.map((row) => ({
     provider: row.provider,
     email: row.email,
     password: row.password,
     tokens: row.tokens,
     metadata: row.metadata,
-    status: row.status,
     enabled: row.enabled,
-    quotaLimit: row.quotaLimit,
-    quotaRemaining: row.quotaRemaining,
-    quotaResetAt: row.quotaResetAt,
     createdAt: row.createdAt,
   }));
 

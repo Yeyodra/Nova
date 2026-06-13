@@ -92,11 +92,14 @@ describe("Backup & Restore API", () => {
       expect(testAccount.provider).toBe("kiro");
       expect(testAccount.email).toBe(`${TEST_PREFIX}1@test.com`);
       expect(testAccount.password).toBeDefined();
-      expect(testAccount.status).toBe("active");
       expect(testAccount.enabled).toBe(true);
       expect(testAccount.tokens).toBeDefined();
       expect(testAccount.createdAt).toBeDefined();
-      // Should NOT include internal fields
+      // Should NOT include runtime state or internal fields
+      expect(testAccount.status).toBeUndefined();
+      expect(testAccount.quotaLimit).toBeUndefined();
+      expect(testAccount.quotaRemaining).toBeUndefined();
+      expect(testAccount.quotaResetAt).toBeUndefined();
       expect(testAccount.id).toBeUndefined();
       expect(testAccount.lastUsedAt).toBeUndefined();
       expect(testAccount.lastLoginAt).toBeUndefined();
@@ -384,7 +387,6 @@ describe("Backup & Restore API", () => {
         );
         expect(restored).toBeDefined();
         expect(restored.password).toBe(original.password);
-        expect(restored.status).toBe(original.status);
         expect(restored.enabled).toBe(original.enabled);
       }
     });
