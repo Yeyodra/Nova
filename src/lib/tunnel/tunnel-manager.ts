@@ -20,7 +20,14 @@ const REACHABLE_TTL_MS = 30000;
 const tunnelReachable = { value: false, url: null as string | null, fetchedAt: 0, refreshing: false };
 
 function bgRefreshReachable(url: string | null): void {
-  if (tunnelReachable.refreshing) return;
+  if (tunnelReachable.refreshing) {
+    // Safety: if refreshing is stuck for >15s, force reset
+    if (Date.now() - tunnelReachable.fetchedAt > 15000 && tunnelReachable.fetchedAt > 0) {
+      tunnelReachable.refreshing = false;
+    } else {
+      return;
+    }
+  }
   if (!url) { tunnelReachable.value = false; tunnelReachable.url = null; tunnelReachable.fetchedAt = Date.now(); return; }
   tunnelReachable.refreshing = true;
   probeUrlAlive(url)
@@ -58,14 +65,24 @@ export async function enableTunnel(localPort: number = config.port): Promise<{ s
   const token = tunnelSvc.cancelToken;
 
   try {
-    // Check if already running and reachable
+    // Check if already running and reachable (retry up to 3 times with delay)
     if (isCloudflaredRunning()) {
       const existing = loadState();
-      if (existing?.tunnelUrl && await probeUrlAlive(existing.tunnelUrl)) {
-        console.log(`[Tunnel] already running, reuse: ${existing.tunnelUrl}`);
-        tunnelSvc.spawnInProgress = false;
-        broadcastStatus();
-        return { success: true, tunnelUrl: existing.tunnelUrl, mode: existing.mode, alreadyRunning: true };
+      if (existing?.tunnelUrl) {
+        for (let attempt = 0; attempt < 3; attempt++) {
+          if (await probeUrlAlive(existing.tunnelUrl)) {
+            console.log(`[Tunnel] already running, reuse: ${existing.tunnelUrl} (attempt ${attempt + 1})`);
+            tunnelSvc.spawnInProgress = false;
+            broadcastStatus();
+            // Prime reachable cache
+            tunnelReachable.value = true;
+            tunnelReachable.url = existing.tunnelUrl;
+            tunnelReachable.fetchedAt = Date.now();
+            return { success: true, tunnelUrl: existing.tunnelUrl, mode: existing.mode, alreadyRunning: true };
+          }
+          if (attempt < 2) await new Promise((r) => setTimeout(r, 3000));
+        }
+        console.log(`[Tunnel] existing tunnel unreachable after 3 attempts, respawning...`);
       }
     }
 

@@ -143,6 +143,24 @@ app.use("/api/*", async (c, next) => {
   await next();
 });
 
+// Fallback: rewrite OpenAI-compatible paths without /v1 prefix → /v1/*
+// Allows baseURL to be set without /v1 suffix (e.g. https://tunnel.trycloudflare.com)
+app.use("*", async (c, next) => {
+  const path = c.req.path;
+  if (
+    !path.startsWith("/v1/") &&
+    !path.startsWith("/api/") &&
+    !path.startsWith("/ws") &&
+    (path === "/models" || path === "/chat/completions" || path === "/messages" || path === "/completions" || path === "/embeddings")
+  ) {
+    const newUrl = new URL(c.req.url);
+    newUrl.pathname = `/v1${path}`;
+    const newReq = new Request(newUrl.toString(), c.req.raw);
+    return app.fetch(newReq, { ip: c.env?.ip });
+  }
+  await next();
+});
+
 // Mount routes
 app.route("/", proxyRouter); // /v1/chat/completions, /v1/models
 app.route("/api", apiRouter); // /api/accounts, /api/settings, /api/stats

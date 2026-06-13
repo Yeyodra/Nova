@@ -42,6 +42,17 @@ async function resolveDns(hostname: string, timeoutMs: number): Promise<boolean>
 
 export async function probeUrlAlive(url: string): Promise<boolean> {
   if (!url) return false;
+  try { new URL(url); } catch { return false; }
+
+  // Try fetch directly first (most reliable — uses system DNS)
+  try {
+    const res = await fetch(`${url}/api/health`, {
+      signal: AbortSignal.timeout(HEALTH_CHECK.fetchTimeoutMs),
+    });
+    return res.ok;
+  } catch { /* fetch failed, try with DNS pre-check for diagnostics */ }
+
+  // Fallback: explicit DNS check then retry fetch
   let hostname: string;
   try { hostname = new URL(url).hostname; } catch { return false; }
 
