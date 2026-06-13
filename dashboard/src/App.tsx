@@ -2,7 +2,8 @@ import { lazy, Suspense, useState, useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
 import Layout from "./components/layout/Layout";
 import Login from "./pages/Login";
-import { isAuthenticated, validateApiKey, logout } from "./lib/api";
+import Setup from "./pages/Setup";
+import { checkSetupStatus, isAuthenticated, logout } from "./lib/api";
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Accounts = lazy(() => import("./pages/Accounts"));
@@ -22,45 +23,55 @@ const Integration = lazy(() => import("./pages/Integration"));
 const Tunnel = lazy(() => import("./pages/Tunnel"));
 const CodexOAuthCallback = lazy(() => import("./pages/CodexOAuthCallback"));
 
+type AuthState = "loading" | "setup" | "login" | "authenticated";
+
 function RouteFallback() {
   return <div className="flex h-64 items-center justify-center text-sm text-[var(--muted-foreground)]">Loading...</div>;
 }
 
 export default function App() {
-  const [authed, setAuthed] = useState<boolean | null>(null);
+  const [authState, setAuthState] = useState<AuthState>("loading");
 
   useEffect(() => {
     async function check() {
-      if (!isAuthenticated()) {
-        setAuthed(false);
-        return;
-      }
-      const key = localStorage.getItem("api_key")!;
-      const valid = await validateApiKey(key);
-      if (!valid) {
-        logout();
-        setAuthed(false);
-      } else {
-        setAuthed(true);
+      try {
+        const { setup } = await checkSetupStatus();
+        if (!setup) {
+          setAuthState("setup");
+        } else if (isAuthenticated()) {
+          setAuthState("authenticated");
+        } else {
+          setAuthState("login");
+        }
+      } catch {
+        setAuthState("login");
       }
     }
     check();
   }, []);
 
+  function handleSetup() {
+    setAuthState("login");
+  }
+
   function handleLogin() {
-    setAuthed(true);
+    setAuthState("authenticated");
   }
 
   function handleLogout() {
     logout();
-    setAuthed(false);
+    setAuthState("login");
   }
 
-  if (authed === null) {
+  if (authState === "loading") {
     return <div className="flex h-screen items-center justify-center text-sm text-[var(--muted-foreground)]">Loading...</div>;
   }
 
-  if (!authed) {
+  if (authState === "setup") {
+    return <Setup onSetup={handleSetup} />;
+  }
+
+  if (authState === "login") {
     return <Login onLogin={handleLogin} />;
   }
 

@@ -5,12 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Eye, EyeOff, Lock } from "lucide-react";
 import { API_BASE } from "@/lib/api";
 
-interface LoginProps {
-  onLogin: () => void;
+interface SetupProps {
+  onSetup: () => void;
 }
 
-export default function Login({ onLogin }: LoginProps) {
+export default function Setup({ onSetup }: SetupProps) {
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -21,23 +22,25 @@ export default function Login({ onLogin }: LoginProps) {
       setError("Please enter a password");
       return;
     }
+    if (password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
 
     setLoading(true);
     setError(null);
 
     try {
-      const res = await fetch(`${API_BASE}/api/dashboard-auth/login`, {
+      const res = await fetch(`${API_BASE}/api/dashboard-auth/setup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password: password.trim() }),
       });
       if (res.ok) {
-        const data = await res.json();
-        localStorage.setItem("dashboard_token", data.token);
-        onLogin();
+        onSetup();
       } else {
         const data = await res.json().catch(() => ({}));
-        setError(data.error || "Invalid password");
+        setError(data.error || "Setup failed");
       }
     } catch {
       setError("Network error");
@@ -52,9 +55,9 @@ export default function Login({ onLogin }: LoginProps) {
           <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--primary)]/10">
             <Lock className="h-6 w-6 text-[var(--primary)]" />
           </div>
-          <CardTitle className="text-xl">Etteum</CardTitle>
+          <CardTitle className="text-xl">Set Up Password</CardTitle>
           <p className="text-sm text-[var(--muted-foreground)] mt-1">
-            Enter your password to access the dashboard
+            Create a password to secure your dashboard
           </p>
         </CardHeader>
         <CardContent>
@@ -77,6 +80,16 @@ export default function Login({ onLogin }: LoginProps) {
               </button>
             </div>
 
+            <div className="relative">
+              <Input
+                type={showPassword ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => { setConfirmPassword(e.target.value); setError(null); }}
+                placeholder="Confirm password"
+                className="pr-10"
+              />
+            </div>
+
             {error && (
               <div className="rounded-md bg-[var(--error)]/10 p-3 text-sm text-[var(--error)]">
                 {error}
@@ -84,7 +97,7 @@ export default function Login({ onLogin }: LoginProps) {
             )}
 
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Verifying..." : "Login"}
+              {loading ? "Setting up..." : "Set Password"}
             </Button>
           </form>
         </CardContent>

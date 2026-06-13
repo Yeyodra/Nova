@@ -22,31 +22,37 @@ export function getWsBase(): string {
   return `${protocol}://${window.location.hostname}:${backendPort}`;
 }
 
-function getApiKey(): string {
-  return localStorage.getItem("api_key") || "pool-proxy-secret-key";
+function getToken(): string | null {
+  return localStorage.getItem("dashboard_token");
 }
 
-export async function validateApiKey(key: string): Promise<boolean> {
-  try {
-    const res = await fetch(`${API_BASE}/api/keys/test`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key }),
-    });
-    if (!res.ok) return false;
-    const data = await res.json();
-    return data.valid === true;
-  } catch {
-    return false;
+export async function loginWithPassword(password: string): Promise<{ token: string }> {
+  const res = await fetch(`${API_BASE}/api/dashboard-auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || "Login failed");
   }
+  const data = await res.json();
+  localStorage.setItem("dashboard_token", data.token);
+  return data;
+}
+
+export async function checkSetupStatus(): Promise<{ setup: boolean }> {
+  const res = await fetch(`${API_BASE}/api/dashboard-auth/status`);
+  if (!res.ok) throw new Error("Failed to check setup status");
+  return res.json();
 }
 
 export function isAuthenticated(): boolean {
-  return !!localStorage.getItem("api_key");
+  return !!localStorage.getItem("dashboard_token");
 }
 
 export function logout() {
-  localStorage.removeItem("api_key");
+  localStorage.removeItem("dashboard_token");
 }
 
 type FetchApiOptions = RequestInit & { timeoutMs?: number };
@@ -68,7 +74,7 @@ export async function fetchApi<T = any>(path: string, options?: FetchApiOptions)
       signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${getApiKey()}`,
+        "Authorization": `Bearer ${getToken()}`,
         ...fetchOptions.headers,
       },
     });
@@ -201,7 +207,7 @@ export async function fetchRequests(page: number = 1, limit: number = 50, provid
 }
 
 export async function fetchModels() {
-  return fetchApi("/v1/models");
+  return fetchApi("/api/models");
 }
 
 export interface ModelMappingDTO {
