@@ -9,6 +9,7 @@ import {
 } from "./base";
 import type { Account } from "../../db/schema";
 import { config } from "../../config";
+import { applyAgentRenameFilters } from "../filters";
 
 
 /**
@@ -628,10 +629,12 @@ export class CodeBuddyProvider extends BaseProvider {
           continue;
         }
 
-        // Simple string content — already filtered by router.sanitizeRequest()
+        // Apply agent rename ONLY to system messages (China provider bypass)
+        // User/assistant messages keep original names so OMO can dispatch correctly
+        const finalContent = msg.role === "system" ? applyAgentRenameFilters(content) : content;
         cleanedMessages.push({
           ...msg,
-          content,
+          content: finalContent,
         });
         continue;
       }

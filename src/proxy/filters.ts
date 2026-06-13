@@ -248,80 +248,7 @@ export const PUDIDIL_FILTERS: FilterRule[] = [
     is_regex: true,
   },
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PASS 2: Rename agent names to Chinese historical figures
-  // (bypasses role-play/jailbreak heuristics on China providers)
-  // ═══════════════════════════════════════════════════════════════════════════
-  {
-    id: "rename_sisyphus_junior",
-    pattern: "(?<![./\\\\])\\bSisyphus[- ]Junior\\b",
-    replacement: "Red Guard",
-    is_active: true,
-    is_regex: true,
-  },
-  {
-    id: "rename_sisyphus",
-    pattern: "(?<![./\\\\])\\bSisyphus\\b",
-    replacement: "Xi Jinping",
-    is_active: true,
-    is_regex: true,
-  },
-  {
-    id: "rename_hephaestus",
-    pattern: "(?<![./\\\\])\\bHephaestus\\b",
-    replacement: "Zhuge Liang",
-    is_active: true,
-    is_regex: true,
-  },
-  {
-    id: "rename_oracle",
-    pattern: "(?<![./\\\\])\\bOracle\\b",
-    replacement: "Confucius",
-    is_active: true,
-    is_regex: true,
-  },
-  {
-    id: "rename_librarian",
-    pattern: "(?<![./\\\\])\\bLibrarian\\b",
-    replacement: "Cai Lun",
-    is_active: true,
-    is_regex: true,
-  },
-  {
-    id: "rename_explore",
-    pattern: "(?<![./\\\\])\\bExplore\\b",
-    replacement: "Sun Wukong",
-    is_active: true,
-    is_regex: true,
-  },
-  {
-    id: "rename_atlas",
-    pattern: "(?<![./\\\\])\\bAtlas\\b",
-    replacement: "Mao Zedong",
-    is_active: true,
-    is_regex: true,
-  },
-  {
-    id: "rename_prometheus",
-    pattern: "(?<![./\\\\])\\bPrometheus\\b",
-    replacement: "Laozi",
-    is_active: true,
-    is_regex: true,
-  },
-  {
-    id: "rename_metis",
-    pattern: "(?<![./\\\\])\\bMetis\\b",
-    replacement: "Sun Tzu",
-    is_active: true,
-    is_regex: true,
-  },
-  {
-    id: "rename_momus",
-    pattern: "(?<![./\\\\])\\bMomus\\b",
-    replacement: "Lu Xun",
-    is_active: true,
-    is_regex: true,
-  },
+
 
   // Remove tool use framework identifiers (MCP, tool_use markers)
   {
@@ -415,4 +342,34 @@ export function applyPudidilFilters(content: string): string {
   }
 
   return filtered;
+}
+
+/**
+ * Agent name rename filters — ONLY for system messages sent to China providers.
+ * These must NOT be applied to user/assistant messages because OMO uses the
+ * original names internally for agent dispatch.
+ */
+const AGENT_RENAME_MAP: Array<[RegExp, string]> = [
+  [/(?<![./\\])\bSisyphus[- ]Junior\b/gi, "Red Guard"],
+  [/(?<![./\\])\bSisyphus\b/gi, "Xi Jinping"],
+  [/(?<![./\\])\bHephaestus\b/gi, "Zhuge Liang"],
+  [/(?<![./\\])\bOracle\b/gi, "Confucius"],
+  [/(?<![./\\])\bLibrarian\b/gi, "Cai Lun"],
+  [/(?<![./\\])\bExplore\b/gi, "Sun Wukong"],
+  [/(?<![./\\])\bAtlas\b/gi, "Mao Zedong"],
+  [/(?<![./\\])\bPrometheus\b/gi, "Laozi"],
+  [/(?<![./\\])\bMetis\b/gi, "Sun Tzu"],
+  [/(?<![./\\])\bMomus\b/gi, "Lu Xun"],
+];
+
+/**
+ * Rename agent names to Chinese historical figures.
+ * Call this ONLY on system messages before sending to China-based providers.
+ */
+export function applyAgentRenameFilters(content: string): string {
+  let result = content;
+  for (const [pattern, replacement] of AGENT_RENAME_MAP) {
+    result = result.replace(pattern, replacement);
+  }
+  return result;
 }
