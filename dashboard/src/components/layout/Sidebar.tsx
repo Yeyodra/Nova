@@ -97,7 +97,9 @@ export default function Sidebar({ onLogout, open, onClose, collapsed = false, on
       ? { color: "var(--success)", label: "Live" }
       : wsStatus === "connecting"
         ? { color: "var(--warning)", label: "Connecting" }
-        : { color: "var(--error)", label: "Offline" };
+        : wsStatus === "degraded"
+          ? { color: "var(--muted-foreground)", label: "Polling" }
+          : { color: "var(--error)", label: "Offline" };
 
   return (
     <aside

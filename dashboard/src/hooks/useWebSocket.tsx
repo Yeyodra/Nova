@@ -17,7 +17,7 @@ import { getWsBase } from "@/lib/api";
  * backoff, fans every message out to the registered handlers.
  */
 
-export type WsStatus = "connecting" | "open" | "closed";
+export type WsStatus = "connecting" | "open" | "closed" | "degraded";
 
 interface WsMessage {
   type: string;
@@ -38,6 +38,8 @@ const WsContext = createContext<WsContextValue | null>(null);
 
 const MAX_BACKOFF_MS = 15_000;
 const BASE_BACKOFF_MS = 1_000;
+const DEGRADED_AFTER_ATTEMPTS = 4;
+const DEGRADED_RETRY_MS = 60_000;
 
 export function WebSocketProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<WsStatus>("connecting");
@@ -120,11 +122,20 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
 
   const scheduleReconnect = useCallback(() => {
     if (!aliveRef.current) return;
+    attemptRef.current += 1;
+
+    // After N failed attempts, enter degraded mode — stop aggressive reconnect
+    if (attemptRef.current >= DEGRADED_AFTER_ATTEMPTS) {
+      setStatus("degraded");
+      // Retry once every 60s in background (silent)
+      reconnectTimerRef.current = setTimeout(connect, DEGRADED_RETRY_MS);
+      return;
+    }
+
     const delay = Math.min(
       MAX_BACKOFF_MS,
       BASE_BACKOFF_MS * 2 ** attemptRef.current
     );
-    attemptRef.current += 1;
     reconnectTimerRef.current = setTimeout(connect, delay);
   }, [connect]);
 

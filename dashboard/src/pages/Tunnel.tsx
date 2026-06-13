@@ -101,13 +101,15 @@ export default function Tunnel() {
   function getStatusColor(): string {
     if (!status?.enabled || !status?.running) return "bg-red-500";
     if (status.reachable) return "bg-green-500";
+    if (status.running) return "bg-emerald-400";
     return "bg-yellow-500";
   }
 
   function getStatusText(): string {
     if (!status?.enabled || !status?.running) return "Stopped";
     if (status.reachable) return "Connected";
-    return "Checking reachability...";
+    if (status.running) return "Running";
+    return "Starting...";
   }
 
   if (loading && !status) {
@@ -169,7 +171,7 @@ export default function Tunnel() {
             }`}>
               Tunnel
             </span>
-            {status?.enabled && !actionLoading && status?.reachable && tunnelEndpoint ? (
+            {status?.enabled && !actionLoading && tunnelEndpoint && status?.running ? (
               <>
                 <Input value={tunnelEndpoint} readOnly className="flex-1 font-mono text-sm" />
                 <Button
@@ -190,11 +192,11 @@ export default function Tunnel() {
                   <Power className="h-4 w-4" />
                 </Button>
               </>
-            ) : status?.enabled && !actionLoading && !status?.reachable ? (
+            ) : status?.enabled && !actionLoading && !status?.running ? (
               <>
                 <div className="flex-1 flex items-center gap-2 rounded border border-yellow-500/30 bg-yellow-500/5 px-3 py-1.5 text-sm text-yellow-600 dark:text-yellow-400">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  {tunnelEndpoint ? "Tunnel reconnecting..." : "Checking..."}
+                  {tunnelEndpoint ? "Tunnel starting..." : "Checking..."}
                 </div>
                 <Button
                   variant="outline"
@@ -252,9 +254,7 @@ export default function Tunnel() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-3">
-            <span className={`inline-block h-3 w-3 rounded-full ${getStatusColor()} ${
-              status?.enabled && status?.running && !status?.reachable ? "animate-pulse" : ""
-            }`} />
+            <span className={`inline-block h-3 w-3 rounded-full ${getStatusColor()}`} />
             {getStatusText()}
           </CardTitle>
         </CardHeader>
