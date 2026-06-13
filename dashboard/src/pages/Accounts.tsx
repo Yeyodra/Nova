@@ -11,11 +11,12 @@ import {
   DialogTitle as DTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Plus, Upload, RefreshCw, Play, RotateCcw, Flame, ChevronDown, Loader2 } from "lucide-react";
+import { Plus, Upload, Download, RefreshCw, Play, RotateCcw, Flame, ChevronDown, Loader2 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { useWsEvent } from "@/hooks/useWebSocket";
 import {
+  backupAccounts,
   completeCodexOAuthCallbackUrl,
   createAccount,
   createByokProvider,
@@ -32,6 +33,7 @@ import {
   loginAccounts,
   loginAllAccounts,
   pollCodexOAuthStatus,
+  restoreAccounts,
   startCodexOAuthProxy,
   stopCodexOAuth,
   testByokProvider,
@@ -109,6 +111,10 @@ export default function Accounts() {
   const codexOauthPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const codexOauthStateRef = useRef<string | null>(null);
   const loadingRef = useRef(false);
+  const [restoreDialogOpen, setRestoreDialogOpen] = useState(false);
+  const [restoreStrategy, setRestoreStrategy] = useState<"skip" | "overwrite">("skip");
+  const [restoreResult, setRestoreResult] = useState<any>(null);
+  const [restoreBusy, setRestoreBusy] = useState(false);
 
   async function load() {
     if (loadingRef.current) return;
@@ -356,6 +362,36 @@ export default function Accounts() {
     } catch (err) {
       showError(err);
     }
+  }
+
+  async function handleBackupAll() {
+    try {
+      const data = await backupAccounts();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `etteum-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showSuccess(`Backup downloaded: ${data.total} accounts`);
+    } catch (err) { showError(err); }
+  }
+
+  async function handleRestore(file: File) {
+    setRestoreBusy(true);
+    setRestoreResult(null);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const result = await restoreAccounts(data, restoreStrategy);
+      setRestoreResult(result);
+      if (result.success) {
+        showSuccess(`Restore complete: ${result.imported} imported, ${result.skipped} skipped, ${result.overwritten} overwritten`);
+        await load();
+      }
+    } catch (err) { showError(err); }
+    finally { setRestoreBusy(false); }
   }
 
   function isCodexCallbackUrlValid(value: string) {
@@ -714,6 +750,12 @@ export default function Accounts() {
           <p className="text-sm text-[var(--muted-foreground)] mt-1">Manage provider accounts</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={handleBackupAll}>
+            <Download className="w-4 h-4 mr-2" /> Backup
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setRestoreDialogOpen(true)}>
+            <Upload className="w-4 h-4 mr-2" /> Restore
+          </Button>
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>
             <RefreshCw className="w-4 h-4 mr-2" /> Refresh
           </Button>
@@ -1363,6 +1405,63 @@ export default function Accounts() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Restore Dialog */}
+      <Dialog open={restoreDialogOpen} onOpenChange={setRestoreDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DTitle>Restore Accounts</DTitle>
+            <DialogDescription>Upload a backup JSON file to restore accounts.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Strategy toggle */}
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-[var(--muted-foreground)]">Conflict strategy</span>
+              <div className="flex gap-1 rounded-md border border-[var(--border)] p-0.5">
+                <button
+                  type="button"
+                  className={`px-3 py-1 text-xs rounded ${restoreStrategy === "skip" ? "bg-[var(--primary)] text-white" : "text-[var(--muted-foreground)]"}`}
+                  onClick={() => setRestoreStrategy("skip")}
+                >Skip</button>
+                <button
+                  type="button"
+                  className={`px-3 py-1 text-xs rounded ${restoreStrategy === "overwrite" ? "bg-[var(--primary)] text-white" : "text-[var(--muted-foreground)]"}`}
+                  onClick={() => setRestoreStrategy("overwrite")}
+                >Overwrite</button>
+              </div>
+            </div>
+            <p className="text-xs text-[var(--muted-foreground)]">
+              {restoreStrategy === "skip" ? "Existing accounts will be kept unchanged." : "Existing accounts will be updated with backup data."}
+            </p>
+            {/* File input */}
+            <Input
+              type="file"
+              accept=".json"
+              disabled={restoreBusy}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleRestore(file);
+              }}
+            />
+            {restoreBusy && <p className="text-sm text-[var(--muted-foreground)]">Restoring...</p>}
+            {/* Result */}
+            {restoreResult && (
+              <div className={`rounded-md p-3 text-sm ${restoreResult.success ? "bg-[var(--success)]/10 text-[var(--success)]" : "bg-[var(--error)]/10 text-[var(--error)]"}`}>
+                {restoreResult.success ? (
+                  <div className="space-y-1">
+                    <p>✓ Imported: {restoreResult.imported}</p>
+                    <p>○ Skipped: {restoreResult.skipped}</p>
+                    <p>↻ Overwritten: {restoreResult.overwritten}</p>
+                    {restoreResult.keyMismatch && <p className="text-[var(--warning)]">⚠ Key mismatch — passwords may not decrypt correctly</p>}
+                  </div>
+                ) : (
+                  <p>Restore failed: {restoreResult.errors?.join(", ") || "Unknown error"}</p>
+                )}
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

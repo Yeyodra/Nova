@@ -716,3 +716,16 @@ export async function testByokProvider(
     body: JSON.stringify(model ? { model } : {})
   });
 }
+
+// Backup & Restore
+export async function backupAccounts(provider?: string) {
+  const params = provider ? `?provider=${provider}` : "";
+  return fetchApi(`/api/backup${params}`);
+}
+
+export async function restoreAccounts(data: any, strategy: "skip" | "overwrite" = "skip") {
+  return fetchApi(`/api/restore?strategy=${strategy}`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
