@@ -13,6 +13,7 @@ import { oauthRouter } from "./oauth";
 import { dashboardAuthRouter } from "./dashboard-auth";
 import { healthRouter } from "./health";
 import { tunnelRouter } from "./tunnel";
+import { backupRouter, restoreRouter } from "./backup";
 import { getAllModels } from "../proxy/router";
 import { refreshByokModels } from "../proxy/providers/registry";
 
@@ -37,6 +38,8 @@ apiRouter.get("/providers", (c) => {
 
 apiRouter.route("/health", healthRouter);
 apiRouter.route("/tunnel", tunnelRouter);
+apiRouter.route("/backup", backupRouter);
+apiRouter.route("/restore", restoreRouter);
 
 apiRouter.get("/models", async (c) => {
   await refreshByokModels();
