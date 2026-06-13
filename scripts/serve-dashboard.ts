@@ -10,9 +10,11 @@
  *   DASHBOARD_PORT (default: 1931)
  */
 
+import { resolve, join } from "path";
+
 const port = Number(process.env.DASHBOARD_PORT) || 1931;
-const distDir = new URL("../dashboard/dist", import.meta.url).pathname;
-const indexFile = `${distDir}/index.html`;
+const distDir = resolve(import.meta.dir, "..", "dashboard", "dist");
+const indexFile = join(distDir, "index.html");
 
 // Check if dashboard is built
 if (!(await Bun.file(indexFile).exists())) {
@@ -47,7 +49,7 @@ Bun.serve({
     let pathname = url.pathname;
 
     // Try to serve the exact file
-    let filePath = `${distDir}${pathname}`;
+    let filePath = join(distDir, pathname);
     let file = Bun.file(filePath);
 
     if (await file.exists()) {
@@ -58,7 +60,7 @@ Bun.serve({
 
     // Try with /index.html appended (for directories)
     if (!pathname.includes(".")) {
-      filePath = `${distDir}${pathname}/index.html`;
+      filePath = join(distDir, pathname, "index.html");
       file = Bun.file(filePath);
       if (await file.exists()) {
         return new Response(file, {
