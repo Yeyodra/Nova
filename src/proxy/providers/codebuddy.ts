@@ -773,14 +773,23 @@ export class CodeBuddyProvider extends BaseProvider {
     // Normalize and forward tools if provided
     if (request.tools && request.tools.length > 0) {
       body.tools = this.normalizeTools(request.tools);
-    }
-    if (request.tool_choice) {
-      body.tool_choice = request.tool_choice;
+      // Only forward tool_choice when tools are present and value is supported.
+      // Note: "required" is NOT forwarded — CodeBuddy's backend rejects it on
+      // some model routes with error 11133 (invalid_parameter_value).
+      if (request.tool_choice) {
+        const tc = request.tool_choice;
+        if (tc === "auto" || tc === "none") {
+          body.tool_choice = tc;
+        } else if (typeof tc === "object" && tc?.type === "function" && tc?.function?.name) {
+          body.tool_choice = tc;
+        }
+        // "required" and other values are dropped — CodeBuddy defaults to "auto"
+      }
     }
 
-    if (isThinking) {
-      body.reasoning = { effort: "high" };
-    }
+    // Extended thinking: CodeBuddy handles thinking via the model name itself
+    // (e.g. "model-thinking"). Do NOT send reasoning/reasoning_effort params
+    // as CodeBuddy's API rejects unrecognized parameters with error 11133.
 
     // Use a longer timeout for streaming requests — large context (Claude Code)
     // can cause CodeBuddy to take > 2 minutes before the first token arrives.
