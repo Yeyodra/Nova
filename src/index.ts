@@ -18,6 +18,7 @@ import { loadFilterCache } from "./proxy/filter-cache";
 import { ensureModelMappingTable, seedModelMappings, loadModelMappingCache } from "./proxy/model-mapping";
 import { refreshByokModels } from "./proxy/providers/registry";
 import { initTunnel } from "./lib/tunnel/watchdog";
+import { fileURLToPath } from "url";
 
 // Run database migrations on startup
 await runMigrations();
@@ -188,7 +189,7 @@ app.get("/api/info", (c) => {
 });
 
 // Serve dashboard static files (SPA fallback)
-const dashboardDist = new URL("../dashboard/dist", import.meta.url).pathname;
+const dashboardDist = fileURLToPath(new URL("../dashboard/dist", import.meta.url));
 const dashboardIndex = `${dashboardDist}/index.html`;
 
 const staticMimeTypes: Record<string, string> = {
