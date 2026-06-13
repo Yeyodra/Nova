@@ -49,6 +49,61 @@ const newRules = [
     replacement: "software engineering assistant",
     is_regex: false,
   },
+  // Pass 1: China content filter bypass
+  {
+    id: "strip_agent_identity_block",
+    pattern: "<agent-identity>[\\s\\S]*?</agent-identity>",
+    replacement: "",
+    is_regex: true,
+  },
+  {
+    id: "remove_powered_by",
+    pattern: "You are powered by[^.\\n]*\\.?",
+    replacement: "",
+    is_regex: true,
+  },
+  {
+    id: "remove_model_id_declaration",
+    pattern: "(?:model|Model)\\s+(?:ID|id|name)\\s+(?:is\\s+)?[\\w/.-]*(?:opus|sonnet|gpt|gemini|claude)[\\w/.-]*",
+    replacement: "",
+    is_regex: true,
+  },
+  {
+    id: "strip_omo_branding",
+    pattern: "Oh ?My ?Open(?:Code|Agent|China)",
+    replacement: "system",
+    is_regex: true,
+  },
+  {
+    id: "strip_opencode_branding",
+    pattern: "(?:from |by |in |— )(?:opencode|OpenCode)",
+    replacement: "",
+    is_regex: true,
+  },
+  {
+    id: "remove_identity_instruction",
+    pattern: "When asked who you are[^.\\n]*\\.?",
+    replacement: "",
+    is_regex: true,
+  },
+  {
+    id: "remove_identity_priority",
+    pattern: "This identity takes priority[^.\\n]*\\.?",
+    replacement: "",
+    is_regex: true,
+  },
+  {
+    id: "remove_session_identity",
+    pattern: "For this session, you operate as[^.\\n]*\\.?",
+    replacement: "",
+    is_regex: true,
+  },
+  {
+    id: "remove_competitor_model_refs",
+    pattern: "(?:claude-opus|claude-sonnet|claude-haiku|gpt-5\\.\\d|gemini-\\d)[\\w.-]*",
+    replacement: "model",
+    is_regex: true,
+  },
 ];
 
 const insert = db.prepare(`

@@ -155,6 +155,99 @@ export const PUDIDIL_FILTERS: FilterRule[] = [
     is_active: true,
     is_regex: true,
   },
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PASS 1: China content filter bypass — strip identity + competitor refs
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Strip entire <agent-identity> XML blocks
+  {
+    id: "strip_agent_identity_block",
+    pattern: "<agent-identity>[\\s\\S]*?</agent-identity>",
+    replacement: "",
+    is_active: true,
+    is_regex: true,
+  },
+  // Remove "You are powered by" model declarations
+  {
+    id: "remove_powered_by",
+    pattern: "You are powered by[^.\\n]*\\.?",
+    replacement: "",
+    is_active: true,
+    is_regex: true,
+  },
+  // Remove model ID declarations (cb-opus-4.6, poolprox/cb-opus-4.6, etc)
+  {
+    id: "remove_model_id_declaration",
+    pattern: "(?:model|Model)\\s+(?:ID|id|name)\\s+(?:is\\s+)?[\\w/.-]*(?:opus|sonnet|gpt|gemini|claude)[\\w/.-]*",
+    replacement: "",
+    is_active: true,
+    is_regex: true,
+  },
+  // Strip "OhMyOpenCode" / "OhMyOpenAgent" branding
+  {
+    id: "strip_omo_branding",
+    pattern: "Oh ?My ?Open(?:Code|Agent|China)",
+    replacement: "system",
+    is_active: true,
+    is_regex: true,
+  },
+  // Strip "opencode" in branding contexts (not file paths)
+  {
+    id: "strip_opencode_branding",
+    pattern: "(?:from |by |in |— )(?:opencode|OpenCode)",
+    replacement: "",
+    is_active: true,
+    is_regex: true,
+  },
+  // Remove "When asked who you are" identity instructions
+  {
+    id: "remove_identity_instruction",
+    pattern: "When asked who you are[^.\\n]*\\.?",
+    replacement: "",
+    is_active: true,
+    is_regex: true,
+  },
+  // Remove "This identity takes priority" (exact from OMO)
+  {
+    id: "remove_identity_priority",
+    pattern: "This identity takes priority[^.\\n]*\\.?",
+    replacement: "",
+    is_active: true,
+    is_regex: true,
+  },
+  // Remove "For this session, you operate as" identity preamble
+  {
+    id: "remove_session_identity",
+    pattern: "For this session, you operate as[^.\\n]*\\.?",
+    replacement: "",
+    is_active: true,
+    is_regex: true,
+  },
+  // Remove competitor model name references in prose (not in code blocks)
+  {
+    id: "remove_competitor_model_refs",
+    pattern: "(?:claude-opus|claude-sonnet|claude-haiku|gpt-5\\.\\d|gemini-\\d)[\\w.-]*",
+    replacement: "model",
+    is_active: true,
+    is_regex: true,
+  },
+  // Remove standalone "Claude" references (e.g. "Non-Claude", "Claude Opus")
+  {
+    id: "remove_claude_standalone",
+    pattern: "(?:Non-)?Claude(?:\\s+(?:Opus|Sonnet|Haiku))?",
+    replacement: "LLM",
+    is_active: true,
+    is_regex: true,
+  },
+  // Remove "Anthropic" standalone references
+  {
+    id: "remove_anthropic_standalone",
+    pattern: "\\bAnthrop(?:ic|ics)\\b",
+    replacement: "provider",
+    is_active: true,
+    is_regex: true,
+  },
+
   // Remove tool use framework identifiers (MCP, tool_use markers)
   {
     id: "remove_mcp_server_ref",
