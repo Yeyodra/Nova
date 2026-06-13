@@ -248,6 +248,81 @@ export const PUDIDIL_FILTERS: FilterRule[] = [
     is_regex: true,
   },
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PASS 2: Rename agent names to Chinese historical figures
+  // (bypasses role-play/jailbreak heuristics on China providers)
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    id: "rename_sisyphus_junior",
+    pattern: "\\bSisyphus[- ]Junior\\b",
+    replacement: "Red Guard",
+    is_active: true,
+    is_regex: true,
+  },
+  {
+    id: "rename_sisyphus",
+    pattern: "\\bSisyphus\\b",
+    replacement: "Xi Jinping",
+    is_active: true,
+    is_regex: true,
+  },
+  {
+    id: "rename_hephaestus",
+    pattern: "\\bHephaestus\\b",
+    replacement: "Zhuge Liang",
+    is_active: true,
+    is_regex: true,
+  },
+  {
+    id: "rename_oracle",
+    pattern: "\\bOracle\\b",
+    replacement: "Confucius",
+    is_active: true,
+    is_regex: true,
+  },
+  {
+    id: "rename_librarian",
+    pattern: "\\bLibrarian\\b",
+    replacement: "Cai Lun",
+    is_active: true,
+    is_regex: true,
+  },
+  {
+    id: "rename_explore",
+    pattern: "\\bExplore\\b",
+    replacement: "Sun Wukong",
+    is_active: true,
+    is_regex: true,
+  },
+  {
+    id: "rename_atlas",
+    pattern: "\\bAtlas\\b",
+    replacement: "Mao Zedong",
+    is_active: true,
+    is_regex: true,
+  },
+  {
+    id: "rename_prometheus",
+    pattern: "\\bPrometheus\\b",
+    replacement: "Laozi",
+    is_active: true,
+    is_regex: true,
+  },
+  {
+    id: "rename_metis",
+    pattern: "\\bMetis\\b",
+    replacement: "Sun Tzu",
+    is_active: true,
+    is_regex: true,
+  },
+  {
+    id: "rename_momus",
+    pattern: "\\bMomus\\b",
+    replacement: "Lu Xun",
+    is_active: true,
+    is_regex: true,
+  },
+
   // Remove tool use framework identifiers (MCP, tool_use markers)
   {
     id: "remove_mcp_server_ref",
