@@ -48,8 +48,8 @@ function Test-PortInUse([int]$port) {
 }
 
 function Invoke-Start {
-  $apiPort = [int](Get-EnvValue "PORT" "1630")
-  $dashPort = [int](Get-EnvValue "DASHBOARD_PORT" "1631")
+  $apiPort = [int](Get-EnvValue "ETTEUM_PORT" "1730")
+  $dashPort = [int](Get-EnvValue "ETTEUM_DASHBOARD_PORT" "1731")
 
   if (Test-PortInUse $apiPort) {
     Write-Host "Port $apiPort already in use. Run: .\etteum.ps1 stop" -ForegroundColor Red
@@ -62,6 +62,8 @@ function Invoke-Start {
 
   Write-Host "Starting Etteum..."
   $ErrLog = Join-Path $ProjectDir ".etteum.err.log"
+  $env:PORT = $apiPort
+  $env:DASHBOARD_PORT = $dashPort
   $proc = Start-Process -FilePath "bun" -ArgumentList "scripts/production.ts","--skip-build" `
     -WorkingDirectory $ProjectDir -RedirectStandardOutput $LogFile -RedirectStandardError $ErrLog `
     -WindowStyle Hidden -PassThru
@@ -93,8 +95,8 @@ function Invoke-Status {
   if (Test-Running) {
     $procId = Get-Content $PidFile
     Write-Host "Etteum is running (PID $procId)" -ForegroundColor Green
-    Write-Host "  Backend:   http://localhost:$(Get-EnvValue 'PORT' '1630')"
-    Write-Host "  Dashboard: http://localhost:$(Get-EnvValue 'DASHBOARD_PORT' '1631')"
+    Write-Host "  Backend:   http://localhost:$(Get-EnvValue 'ETTEUM_PORT' '1730')"
+    Write-Host "  Dashboard: http://localhost:$(Get-EnvValue 'ETTEUM_DASHBOARD_PORT' '1731')"
   } else {
     Write-Host "Etteum is not running"
   }
@@ -141,15 +143,23 @@ function Invoke-Build {
 
 function Invoke-Port([string]$apiPort, [string]$dashPort) {
   if (-not $apiPort -or -not $dashPort) {
-    Write-Host "Current ports: API=$(Get-EnvValue 'PORT' '1630') Dashboard=$(Get-EnvValue 'DASHBOARD_PORT' '1631')"
+    Write-Host "Current ports: API=$(Get-EnvValue 'ETTEUM_PORT' '1730') Dashboard=$(Get-EnvValue 'ETTEUM_DASHBOARD_PORT' '1731')"
     Write-Host "Usage: .\etteum.ps1 port <api_port> <dashboard_port>"
     return
   }
   $content = Get-Content $EnvFile
-  $content = $content -replace "^PORT=.*", "PORT=$apiPort"
-  $content = $content -replace "^DASHBOARD_PORT=.*", "DASHBOARD_PORT=$dashPort"
+  if ($content -match "^ETTEUM_PORT=") {
+    $content = $content -replace "^ETTEUM_PORT=.*", "ETTEUM_PORT=$apiPort"
+  } else {
+    $content += "`nETTEUM_PORT=$apiPort"
+  }
+  if ($content -match "^ETTEUM_DASHBOARD_PORT=") {
+    $content = $content -replace "^ETTEUM_DASHBOARD_PORT=.*", "ETTEUM_DASHBOARD_PORT=$dashPort"
+  } else {
+    $content += "`nETTEUM_DASHBOARD_PORT=$dashPort"
+  }
   $content | Set-Content $EnvFile
-  Write-Host "Ports changed: API=$apiPort Dashboard=$dashPort" -ForegroundColor Green
+  Write-Host "Etteum ports changed: API=$apiPort Dashboard=$dashPort" -ForegroundColor Green
   if (Test-Running) {
     Write-Host "Restarting with new ports..."
     Invoke-Stop
