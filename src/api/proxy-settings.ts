@@ -6,9 +6,19 @@ import { config } from "../config";
 import { pool } from "../proxy/pool";
 import { autoWarmupScheduler, isAutoWarmupSettingKey } from "../auth/warmup-scheduler";
 import { invalidateProxySettingsCache } from "../services/proxy-pool";
+import { loadComboSettings } from "../proxy/combo-settings";
+import { resetComboRotation } from "../proxy/combos";
 
 function isProxyPoolSettingKey(key: string): boolean {
   return key === "proxy_pool_usage" || key === "proxy_pool_rotation";
+}
+
+function isComboSettingKey(key: string): boolean {
+  return (
+    key === "combo_strategy" ||
+    key === "combo_sticky_limit" ||
+    key === "combo_strategies"
+  );
 }
 
 export const proxySettingsRouter = new Hono();
@@ -87,6 +97,11 @@ proxySettingsRouter.put("/:key", async (c) => {
     void autoWarmupScheduler.reload();
   }
 
+  if (isComboSettingKey(key)) {
+    await loadComboSettings();
+    resetComboRotation();
+  }
+
   return c.json({ key, value: body.value });
 });
 
@@ -116,6 +131,7 @@ proxySettingsRouter.put("/", async (c) => {
   let lbCacheTouched = false;
   let warmupTouched = false;
   let proxyPoolTouched = false;
+  let comboTouched = false;
   for (const [key, value] of Object.entries(body)) {
     const existing = await db
       .select()
@@ -140,11 +156,18 @@ proxySettingsRouter.put("/", async (c) => {
     if (isAutoWarmupSettingKey(key)) {
       warmupTouched = true;
     }
+    if (isComboSettingKey(key)) {
+      comboTouched = true;
+    }
   }
 
   if (lbCacheTouched) pool.invalidateLoadBalancingCache();
   if (proxyPoolTouched) invalidateProxySettingsCache();
   if (warmupTouched) void autoWarmupScheduler.reload();
+  if (comboTouched) {
+    await loadComboSettings();
+    resetComboRotation();
+  }
 
   return c.json({ success: true, updated: Object.keys(body).length });
 });

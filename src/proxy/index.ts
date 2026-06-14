@@ -14,8 +14,20 @@ import {
 import { isBadUpstreamRequest, isInvalidModelError } from "./errors";
 import { prepareLogBody } from "./logging";
 import { resolveModelAlias } from "./model-mapping";
+import {
+  resolveCombo,
+  handleComboRequest,
+  getRotatedModels,
+  getComboByNameCached,
+} from "./combos";
+import {
+  getComboStrategy,
+  getComboStickyLimit,
+  getComboSpecificStrategy,
+} from "./combo-settings";
 import { eq, sql } from "drizzle-orm";
 import { providerList, refreshByokModels } from "./providers/registry";
+import { getCombosCached } from "./combos";
 
 export const proxyRouter = new Hono();
 
@@ -453,10 +465,36 @@ function wrapStreamWithUsageFinalizer(
 
 async function handleChatCompletion(body: ChatCompletionRequest) {
   // Rewrite the incoming model id to its mapped target (CLI integration, e.g.
-  // Claude Code's hardcoded haiku/sonnet/opus ids -> a model in the pool).
+  // the assistant's hardcoded haiku/sonnet/opus ids -> a model in the pool).
   body = { ...body, model: resolveModelAlias(normalizeModelId(body.model)) };
   const isStream = body.stream === true;
-  const { result, account, provider, durationMs } = await routeRequest(body, isStream);
+
+  // Combo resolution: if the resolved model id is a combo, fan out to
+  // its sub-models via the combo engine; otherwise route normally.
+  const comboModels = await resolveCombo(body.model);
+  const originalComboName = comboModels ? body.model : null;
+  let routeOutcome:
+    | Awaited<ReturnType<typeof routeRequest>>
+    | Awaited<ReturnType<typeof handleComboRequest>>;
+  if (comboModels && originalComboName) {
+    const combo = getComboByNameCached(originalComboName);
+    const override = getComboSpecificStrategy(originalComboName);
+    const strategy = (override?.strategy ?? combo?.strategy ?? getComboStrategy()) as
+      | "fallback"
+      | "round-robin";
+    const stickyLimit =
+      override?.stickyLimit ?? combo?.stickyLimit ?? getComboStickyLimit();
+    const rotated = getRotatedModels(comboModels, originalComboName, strategy, stickyLimit);
+    const comboOutcome = await handleComboRequest(body, rotated, originalComboName, isStream);
+    routeOutcome = comboOutcome;
+    // Replace combo name with the actual upstream model that succeeded so
+    // downstream token tracking, log writing, and usage upsert all record
+    // the real model. Combo name is preserved separately in _poolprox.
+    body = { ...body, model: comboOutcome.winningModel };
+  } else {
+    routeOutcome = await routeRequest(body, isStream);
+  }
+  const { result, account, provider, durationMs } = routeOutcome;
   let shouldReleaseTracking = true;
 
   try {
@@ -507,6 +545,7 @@ async function handleChatCompletion(body: ChatCompletionRequest) {
         creditSource,
         creditUnit: providers[provider].getProviderCreditUnit(body.model),
         creditRate: providers[provider].getProviderCreditRate(body.model),
+        comboName: originalComboName ?? undefined,
       },
     }),
     responseBody: prepareLogBody(result.response),
@@ -570,9 +609,24 @@ proxyRouter.get("/v1/models", async (c) => {
   // Without this, the sync getModels() returns stale/empty supportedModels.
   await refreshByokModels();
   const models = getAllModels();
+  // Append combos as virtual models (owned_by="combo"). Combos lack provider
+  // fields (vision/pricing/context_window) — only the OpenAI ModelObject
+  // minimum (id, object, created, owned_by) is set.
+  const comboEntries = getCombosCached().map((combo) => ({
+    id: combo.name,
+    object: "model" as const,
+    created: combo.createdAt
+      ? Math.floor(
+          (combo.createdAt instanceof Date
+            ? combo.createdAt.getTime()
+            : Number(combo.createdAt)) / 1000,
+        )
+      : Math.floor(Date.now() / 1000),
+    owned_by: "combo" as const,
+  }));
   return c.json({
     object: "list",
-    data: models,
+    data: [...models, ...comboEntries],
   });
 });
 
