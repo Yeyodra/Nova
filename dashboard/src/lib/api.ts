@@ -261,6 +261,13 @@ export async function updateSettings(settings: Record<string, string>) {
   });
 }
 
+export async function updateSetting(key: string, value: string) {
+  return fetchApi(`/api/settings/${encodeURIComponent(key)}`, {
+    method: "PUT",
+    body: JSON.stringify({ value }),
+  });
+}
+
 export async function fetchProviderList(): Promise<{ data: string[] }> {
   return fetchApi("/api/settings/providers");
 }

@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Save, RefreshCw, Zap, Flame, Globe } from "lucide-react";
+import { Save, RefreshCw, Zap, Flame, Globe, Layers } from "lucide-react";
 import {
   fetchSettings,
   updateSettings,
+  updateSetting,
   fetchProviderList,
   fetchAutoWarmupStatus,
   type AutoWarmupStatus,
@@ -41,6 +42,13 @@ export default function Settings() {
   const [dirty, setDirty] = useState(false);
   const { message, setMessage } = useTimedMessage<string>(null, 3000);
 
+  // Combo Settings (self-contained — own state, own Save button)
+  const [comboStrategy, setComboStrategy] = useState<"fallback" | "round-robin">("fallback");
+  const [comboStickyLimit, setComboStickyLimit] = useState<string>("1");
+  const [comboDirty, setComboDirty] = useState(false);
+  const [comboSaving, setComboSaving] = useState(false);
+  const { message: comboMessage, setMessage: setComboMessage } = useTimedMessage<string>(null, 3000);
+
   const providerListApi = useApi<{ data: string[] }>(fetchProviderList, []);
 
   const providers = useMemo(
@@ -50,9 +58,36 @@ export default function Settings() {
 
   async function load() {
     const res = (await fetchSettings()) as { data: Record<string, string> };
-    setForm((current) => ({ ...current, ...(res.data || {}) }));
+    const data = res.data || {};
+    setForm((current) => ({ ...current, ...data }));
     setDirty(false);
+
+    // Hydrate combo settings (defaults: 'fallback' / 1)
+    const rawStrategy = data.combo_strategy;
+    setComboStrategy(rawStrategy === "round-robin" ? "round-robin" : "fallback");
+    const rawSticky = data.combo_sticky_limit;
+    const stickyNum = Number(rawSticky);
+    setComboStickyLimit(
+      rawSticky && Number.isFinite(stickyNum) && stickyNum >= 1 ? String(Math.floor(stickyNum)) : "1"
+    );
+    setComboDirty(false);
+
     fetchAutoWarmupStatus().then(setWarmupStatus).catch(() => {});
+  }
+
+  async function saveCombo() {
+    setComboSaving(true);
+    try {
+      const sticky = Math.max(1, Math.floor(Number(comboStickyLimit) || 1));
+      // Sequential awaits — mirror the existing per-key save pattern
+      await updateSetting("combo_strategy", comboStrategy);
+      await updateSetting("combo_sticky_limit", String(sticky));
+      setComboStickyLimit(String(sticky));
+      setComboDirty(false);
+      setComboMessage("Combo settings saved.");
+    } finally {
+      setComboSaving(false);
+    }
   }
 
   useEffect(() => {
@@ -325,6 +360,90 @@ export default function Settings() {
                   : "Distributes requests evenly across all active proxies in rotation."}
               </p>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Combo Settings */}
+        <Card className="border-[var(--border)]">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Layers className="w-4 h-4 text-[var(--primary)]" />
+              Combo Settings
+            </CardTitle>
+            <CardDescription>
+              Control how multi-model combos pick the upstream model on each request
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--secondary)]/40 p-4 space-y-2">
+              <label className="text-sm font-medium text-[var(--foreground)]">
+                Global Strategy
+              </label>
+              <select
+                value={comboStrategy}
+                onChange={(e) => {
+                  setComboStrategy(e.target.value === "round-robin" ? "round-robin" : "fallback");
+                  setComboDirty(true);
+                }}
+                className="w-full h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-sm text-[var(--foreground)]"
+              >
+                <option value="fallback">Fallback</option>
+                <option value="round-robin">Round Robin</option>
+              </select>
+              <p className="text-xs text-[var(--muted-foreground)]">
+                {comboStrategy === "round-robin"
+                  ? "Rotates the starting model each call. Sticky limit lets a winner be reused before rotating."
+                  : "Tries combo models in declared order, advancing only when the current one hard-fails."}
+              </p>
+            </div>
+
+            {comboStrategy === "round-robin" && (
+              <div>
+                <label className="text-sm text-[var(--foreground)]">Sticky Limit</label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={comboStickyLimit}
+                  onChange={(e) => {
+                    setComboStickyLimit(e.target.value);
+                    setComboDirty(true);
+                  }}
+                  placeholder="1"
+                  className="mt-1"
+                />
+                <p className="mt-1 text-xs text-[var(--muted-foreground)]">
+                  How many consecutive calls reuse the last winning model before rotating again.
+                </p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-2 pt-2">
+              <div className="flex items-center gap-2">
+                {comboDirty && (
+                  <span className="text-xs text-[var(--warning)] px-2 py-1 rounded bg-[var(--warning)]/10">
+                    Unsaved
+                  </span>
+                )}
+              </div>
+              <Button
+                size="sm"
+                onClick={saveCombo}
+                disabled={comboSaving || !comboDirty}
+              >
+                <Save className="w-4 h-4 mr-2" />
+                {comboSaving ? "Saving..." : "Save Combo Settings"}
+              </Button>
+            </div>
+
+            {comboMessage && (
+              <div className="rounded-md bg-[var(--success)]/10 p-3 text-sm text-[var(--success)]">
+                {comboMessage}
+              </div>
+            )}
+
+            <p className="text-xs text-[var(--muted-foreground)]">
+              Saving clears all combo rotation state so the new strategy takes effect immediately.
+            </p>
           </CardContent>
         </Card>
       </div>

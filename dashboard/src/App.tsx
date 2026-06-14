@@ -18,6 +18,7 @@ const VccPool = lazy(() => import("./pages/VccPool"));
 const ProxyPool = lazy(() => import("./pages/ProxyPool"));
 const ImageStudio = lazy(() => import("./pages/ImageStudio"));
 const FilterRules = lazy(() => import("./pages/FilterRules"));
+const Combos = lazy(() => import("./pages/Combos"));
 const EmailProviderFilter = lazy(() => import("./pages/EmailProviderFilter"));
 const Integration = lazy(() => import("./pages/Integration"));
 const Tunnel = lazy(() => import("./pages/Tunnel"));
@@ -92,6 +93,7 @@ export default function App() {
           <Route path="/vcc-pool" element={<VccPool />} />
           <Route path="/proxy-pool" element={<ProxyPool />} />
           <Route path="/filter-rules" element={<FilterRules />} />
+          <Route path="/combos" element={<Combos />} />
           <Route path="/integration" element={<Integration />} />
           <Route path="/tunnel" element={<Tunnel />} />
           <Route path="/image-studio" element={<ImageStudio />} />
