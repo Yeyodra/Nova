@@ -183,6 +183,50 @@ export const modelMappings = sqliteTable("model_mappings", {
   index("model_mappings_priority_idx").on(table.priority),
 ]);
 
+// Combos: named groups of upstream models with an optional override strategy.
+// `strategy` and `stickyLimit` are nullable so a combo can fall back to the
+// global default. `models` is a JSON array of upstream model ids.
+export const combos = sqliteTable("combos", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull().unique(),
+  models: text("models", { mode: "json" }).notNull().$defaultFn(() => [] as string[]),
+  strategy: text("strategy"), // "fallback" | "round-robin" | null (use global default)
+  stickyLimit: integer("sticky_limit"), // null = use global default
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+}, (table) => [
+  uniqueIndex("combos_name_idx").on(table.name),
+]);
+
+/**
+ * Create the combos table out-of-band. The drizzle file-migration journal in
+ * this repo is inconsistent (only 0000 is registered), so we guarantee the
+ * table exists at runtime with an idempotent CREATE — same approach as
+ * ensureModelMappingTable() in src/proxy/model-mapping.ts.
+ *
+ * NOTE: `client` is imported lazily via require() to avoid a circular module
+ * init: `db/index.ts` imports this schema file at construction time, so a
+ * top-level `import { client } from "./index"` would observe an
+ * uninitialized export and crash drizzle's relation extractor.
+ */
+export function ensureCombosTable(): void {
+  const { client } = require("./index") as typeof import("./index");
+  client.exec(`
+    CREATE TABLE IF NOT EXISTS combos (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+      name text NOT NULL UNIQUE,
+      models text NOT NULL DEFAULT '[]',
+      strategy text,
+      sticky_limit integer,
+      created_at integer NOT NULL,
+      updated_at integer
+    );
+  `);
+  client.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS combos_name_idx ON combos (name);`
+  );
+}
+
 // Type exports
 export type Account = typeof accounts.$inferSelect;
 export type NewAccount = typeof accounts.$inferInsert;
@@ -205,3 +249,5 @@ export type FilterRule = typeof filterRules.$inferSelect;
 export type NewFilterRule = typeof filterRules.$inferInsert;
 export type ModelMapping = typeof modelMappings.$inferSelect;
 export type NewModelMapping = typeof modelMappings.$inferInsert;
+export type Combo = typeof combos.$inferSelect;
+export type NewCombo = typeof combos.$inferInsert;

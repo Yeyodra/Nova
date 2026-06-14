@@ -11,11 +11,13 @@ import { isValidApiKey } from "./api/keys";
 import { verifyDashboardToken, rotateJwtSecret } from "./utils/jwt";
 import { autoWarmupScheduler } from "./auth/warmup-scheduler";
 import { db } from "./db/index";
-import { filterRules, settings } from "./db/schema";
+import { filterRules, settings, ensureCombosTable } from "./db/schema";
 import { sql, eq } from "drizzle-orm";
 import { PUDIDIL_FILTERS } from "./proxy/filters";
 import { loadFilterCache } from "./proxy/filter-cache";
 import { ensureModelMappingTable, seedModelMappings, loadModelMappingCache } from "./proxy/model-mapping";
+import { loadComboSettings } from "./proxy/combo-settings";
+import { loadCombosCache } from "./proxy/combos";
 import { refreshByokModels } from "./proxy/providers/registry";
 import { initTunnel } from "./lib/tunnel/watchdog";
 import { fileURLToPath } from "url";
@@ -59,6 +61,25 @@ try {
   await loadModelMappingCache();
 } catch (e) {
   console.error("[DB] Model mapping init skipped:", e instanceof Error ? e.message : e);
+}
+
+// Load combo runtime settings (strategy / sticky limit / per-combo overrides)
+// from the existing settings key-value table into the in-memory cache.
+try {
+  await loadComboSettings();
+} catch (e) {
+  console.error("[DB] Combo settings load skipped:", e instanceof Error ? e.message : e);
+}
+
+// Ensure combos table exists (idempotent). Same out-of-band pattern as
+// ensureModelMappingTable — sidesteps the inconsistent drizzle migration journal.
+// Then warm the in-memory combos cache so resolveCombo() works from the
+// first request — same pattern as loadModelMappingCache above.
+try {
+  ensureCombosTable();
+  await loadCombosCache();
+} catch (e) {
+  console.error("[DB] Combos table init skipped:", e instanceof Error ? e.message : e);
 }
 
 // Pre-warm BYOK provider cache so ownsModel() works from the first request
