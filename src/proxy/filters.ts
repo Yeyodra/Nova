@@ -344,32 +344,4 @@ export function applyPudidilFilters(content: string): string {
   return filtered;
 }
 
-/**
- * Agent name rename filters — ONLY for system messages sent to China providers.
- * These must NOT be applied to user/assistant messages because OMO uses the
- * original names internally for agent dispatch.
- */
-const AGENT_RENAME_MAP: Array<[RegExp, string]> = [
-  [/(?<![./\\])\bSisyphus[- ]Junior\b/gi, "Red Guard"],
-  [/(?<![./\\])\bSisyphus\b/gi, "Xi Jinping"],
-  [/(?<![./\\])\bHephaestus\b/gi, "Zhuge Liang"],
-  [/(?<![./\\])\bOracle\b/gi, "Confucius"],
-  [/(?<![./\\])\bLibrarian\b/gi, "Cai Lun"],
-  [/(?<![./\\])\bExplore\b/gi, "Sun Wukong"],
-  [/(?<![./\\])\bAtlas\b/gi, "Mao Zedong"],
-  [/(?<![./\\])\bPrometheus\b/gi, "Laozi"],
-  [/(?<![./\\])\bMetis\b/gi, "Sun Tzu"],
-  [/(?<![./\\])\bMomus\b/gi, "Lu Xun"],
-];
 
-/**
- * Rename agent names to Chinese historical figures.
- * Call this ONLY on system messages before sending to China-based providers.
- */
-export function applyAgentRenameFilters(content: string): string {
-  let result = content;
-  for (const [pattern, replacement] of AGENT_RENAME_MAP) {
-    result = result.replace(pattern, replacement);
-  }
-  return result;
-}
