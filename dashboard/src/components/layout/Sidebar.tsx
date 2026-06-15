@@ -13,6 +13,7 @@ import {
   CreditCard,
   Globe,
   Sparkles,
+  Presentation,
   Filter,
   Layers,
   Plug,
@@ -52,6 +53,7 @@ const navSections: NavSection[] = [
     title: "TOOLS",
     items: [
       { label: "Image Studio", path: "/image-studio", icon: Sparkles },
+      { label: "PPTX Studio", path: "/pptx-studio", icon: Presentation },
       { label: "Integration", path: "/integration", icon: Plug },
       { label: "Tunnel", path: "/tunnel", icon: Globe },
     ],

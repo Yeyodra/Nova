@@ -1,0 +1,16 @@
+﻿{
+    "S2 create":  "PASS",
+    "S8 nested-combo":  "PASS",
+    "S13 delete":  "FAIL",
+    "S10 api-models":  "PASS",
+    "S14 all-fail":  "FAIL/CHECK (status 400)",
+    "S12 settings":  "PASS",
+    "S5 invalid-name":  "PASS",
+    "S6 duplicate":  "PASS",
+    "S7 collision-model":  "PASS",
+    "S9 too-many":  "PASS",
+    "S1 list-baseline":  "PASS",
+    "S4 update":  "PASS",
+    "S11 v1-models":  "PASS",
+    "S3 get-one":  "PASS"
+}

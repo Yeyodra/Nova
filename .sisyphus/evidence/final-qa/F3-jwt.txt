@@ -1,0 +1,2 @@
+﻿REDACTED_DASHBOARD_JWT (mask=eyJhbGci...vf2sjF20)
+Full token wiped post-test for security.

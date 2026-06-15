@@ -1,0 +1,45 @@
+﻿DELETE Status: 200 OK
+DELETE Response: {
+    "success":  true
+}
+
+GET-after-delete Status: 
+GET Response: <!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/etteum.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#1e1e1e" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f3f7f4" media="(prefers-color-scheme: light)" />
+    <title>Etteum Dashboard</title>
+    <script>
+      // No-flash theme: apply the saved theme before first paint. Dark is default.
+      (function () {
+        try {
+          var t = localStorage.getItem("poolprox-theme");
+          if (t === "light") {
+            document.documentElement.classList.add("light");
+            // Update theme-color for light mode
+            var metas = document.querySelectorAll('meta[name="theme-color"]');
+            if (metas.length > 0) metas[0].setAttribute("content", "#f3f7f4");
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-Bm38vKXE.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime-S-ySWqyJ.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-DxbQj7sp.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-charts-aSoeKnWH.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-radix-C1b9vMAR.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-icons-DAqeRY7F.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-react-l_9BcTa0.js">
+    <link rel="modulepreload" crossorigin href="/assets/api-yJNlHc3w.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-BA02a1T2.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
+

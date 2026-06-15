@@ -1,0 +1,35 @@
+=== Task 5 Evidence: Normal (non-combo) routing remains unchanged ===
+
+When the resolved model id is NOT in the combos cache, resolveCombo() returns
+null and handleChatCompletion takes the original path:
+
+  routeOutcome = await routeRequest(body, isStream);
+
+The downstream code (token computation, quota decrement, request log insert,
+SSE wrapping) is byte-identical to before — only the source of `routeOutcome`
+changed.
+
+--- Source structure (proxy/index.ts) ---
+const comboModels = await resolveCombo(body.model);
+const originalComboName = comboModels ? body.model : null;
+let routeOutcome;
+if (comboModels && originalComboName) {
+  // ... combo branch ...
+} else {
+  routeOutcome = await routeRequest(body, isStream);   // <-- unchanged path
+}
+const { result, account, provider, durationMs } = routeOutcome;
+
+--- _poolprox payload for non-combo requests ---
+requestBody._poolprox = {
+  creditSource,
+  creditUnit:  providers[provider].getProviderCreditUnit(body.model),
+  creditRate:  providers[provider].getProviderCreditRate(body.model),
+  comboName:   undefined,    // explicit undefined for non-combo (per plan)
+}
+
+--- TypeScript verification ---
+bunx tsc --noEmit on src/proxy/index.ts: no errors introduced by Task 5 edits.
+lsp_diagnostics on src/proxy/index.ts: no diagnostics found.
+lsp_diagnostics on src/index.ts: no diagnostics found.
+lsp_diagnostics on src/proxy/combos.ts: no diagnostics found.

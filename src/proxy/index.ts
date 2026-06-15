@@ -6,6 +6,16 @@ import { pool } from "./pool";
 import { broadcast } from "../ws/index";
 import type { ChatCompletionRequest, CreditSource } from "./providers/base";
 import {
+  validateSlideCount,
+  validateFormat,
+  type CanvaFormat,
+} from "./providers/canva-utils";
+import type {
+  CanvaProvider,
+  CanvaPptxRequestExtras,
+  CanvaPptxProgressEvent,
+} from "./providers/canva";
+import {
   anthropicToOpenAI,
   openAIStreamToAnthropic,
   openAIToAnthropic,
@@ -463,6 +473,313 @@ function wrapStreamWithUsageFinalizer(
   });
 }
 
+// ─── canva-pptx SSE streaming ─────────────────────────────────────
+//
+// T11: translate worker progress events emitted via
+// CanvaProvider.subscribeToProgress (T8) into OpenAI chat-completion-chunk
+// SSE deltas, with 5s heartbeats and SIGTERM-on-disconnect via
+// CanvaProvider.abortRequest. This is a self-contained branch — the rest of
+// the chat-completion pipeline (combo, byok, multi-account retry) is NOT
+// reused because canva-pptx is a single-account, long-running, push-style
+// generator that needs end-to-end control of the response stream.
+
+const PPTX_PHASE_EMOJI: Record<string, string> = {
+  thread_create: "🧠",
+  outline_wait: "📋",
+  design_render: "🎨",
+  materialize: "💾",
+  export: "📤",
+  download: "⬇️",
+  done: "✅",
+};
+
+const PPTX_HEARTBEAT_MS = 5_000;
+
+/** Extract the prompt from the last user message, string-coerce robustly. */
+function extractLastUserPromptForPptx(
+  messages: ChatCompletionRequest["messages"],
+): string {
+  const lastUser = [...(messages || [])].reverse().find((m) => m.role === "user");
+  if (!lastUser) return "";
+  const c = lastUser.content;
+  if (typeof c === "string") return c.trim();
+  if (Array.isArray(c)) {
+    return (c as any[])
+      .map((b) => (b?.type === "text" && typeof b.text === "string" ? b.text : ""))
+      .join("")
+      .trim();
+  }
+  return "";
+}
+
+/** Build one OpenAI-style chat.completion.chunk SSE frame. */
+function buildPptxChunk(
+  requestId: string,
+  model: string,
+  delta: { content?: string; role?: "assistant" } = {},
+  finishReason: "stop" | null = null,
+): string {
+  const chunk = {
+    id: requestId,
+    object: "chat.completion.chunk",
+    created: Math.floor(Date.now() / 1000),
+    model,
+    choices: [
+      {
+        index: 0,
+        delta,
+        finish_reason: finishReason,
+      },
+    ],
+  };
+  return `data: ${JSON.stringify(chunk)}\n\n`;
+}
+
+/**
+ * Handle POST /v1/chat/completions for `canva-pptx` with `stream: true`.
+ * Returns a Response carrying a ReadableStream of SSE frames. Validates
+ * inputs first, then subscribes to progress, dispatches the worker via
+ * CanvaProvider.chatCompletion (which T8 routes to chatCompletionPptx),
+ * translates progress events to chunks, heartbeats every 5s during quiet
+ * periods, and on client disconnect calls provider.abortRequest(requestId).
+ */
+function handleCanvaPptxSseStream(
+  body: ChatCompletionRequest,
+  abortSignal: AbortSignal | undefined,
+): Response {
+  const provider = providers.canva as unknown as CanvaProvider;
+  const model = "canva-pptx";
+  const requestId = `chatcmpl-${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+  const encoder = new TextEncoder();
+  const startedAt = Date.now();
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let closed = false;
+      const safeEnqueue = (s: string) => {
+        if (closed) return;
+        try { controller.enqueue(encoder.encode(s)); } catch { /* stream may already be cancelled */ }
+      };
+      const safeClose = () => {
+        if (closed) return;
+        closed = true;
+        try { controller.close(); } catch { /* idempotent */ }
+      };
+
+      // ── 1. Validate slide_count + format BEFORE dispatching the worker.
+      // Two lookup paths supported (document both inline):
+      //   (a) body.metadata.slide_count / body.metadata.format
+      //   (b) body.tools[0].function.parameters.slide_count / .format
+      // Defaults: slide_count=5, format="pptx".
+      const extras = body as ChatCompletionRequest & CanvaPptxRequestExtras;
+      const meta = extras.metadata ?? {};
+      const toolFnParams =
+        ((body as { tools?: Array<{ function?: { parameters?: Record<string, unknown> } }> }).tools?.[0]?.function?.parameters) ?? {};
+      const slideCountRaw =
+        meta.slide_count ??
+        (toolFnParams as { slide_count?: number }).slide_count ??
+        5;
+      const formatRaw =
+        meta.format ??
+        (toolFnParams as { format?: string }).format ??
+        "pptx";
+      const slideCount = (slideCountRaw as number) | 0;
+      const format = String(formatRaw);
+
+      const prompt = extractLastUserPromptForPptx(body.messages);
+      if (!prompt) {
+        safeEnqueue(buildPptxChunk(requestId, model, { content: "❌ Error: Empty prompt — provide a non-empty user message.\n" }));
+        safeEnqueue(buildPptxChunk(requestId, model, {}, "stop"));
+        safeEnqueue("data: [DONE]\n\n");
+        safeClose();
+        return;
+      }
+
+      const sc = validateSlideCount(slideCount);
+      if (!sc.ok) {
+        safeEnqueue(buildPptxChunk(requestId, model, { content: `❌ Error: ${sc.error}\n` }));
+        safeEnqueue(buildPptxChunk(requestId, model, {}, "stop"));
+        safeEnqueue("data: [DONE]\n\n");
+        safeClose();
+        return;
+      }
+      const fc = validateFormat(format);
+      if (!fc.ok) {
+        safeEnqueue(buildPptxChunk(requestId, model, { content: `❌ Error: ${fc.error}\n` }));
+        safeEnqueue(buildPptxChunk(requestId, model, {}, "stop"));
+        safeEnqueue("data: [DONE]\n\n");
+        safeClose();
+        return;
+      }
+      const validatedFormat = format as CanvaFormat;
+
+      // ── 2. Pick an account. canva-pptx is single-account (no retry).
+      const account = await pool.getNextAccount("canva");
+      if (!account) {
+        safeEnqueue(buildPptxChunk(requestId, model, { content: "❌ Error: No active canva accounts available.\n" }));
+        safeEnqueue(buildPptxChunk(requestId, model, {}, "stop"));
+        safeEnqueue("data: [DONE]\n\n");
+        safeClose();
+        return;
+      }
+
+      // Initial role chunk (matches OpenAI's first-chunk convention).
+      safeEnqueue(buildPptxChunk(requestId, model, { role: "assistant" }));
+
+      // ── 3. Subscribe BEFORE dispatching to avoid missing thread_create.
+      let lastEventAt = Date.now();
+      const unsubscribe = provider.subscribeToProgress(requestId, (event: CanvaPptxProgressEvent) => {
+        lastEventAt = Date.now();
+        const icon = PPTX_PHASE_EMOJI[event.phase] ?? "•";
+        const pct = Math.max(0, Math.min(100, Math.round(event.progress * 100)));
+        const line = `${icon} ${event.message} (${pct}%)\n`;
+        safeEnqueue(buildPptxChunk(requestId, model, { content: line }));
+      });
+
+      // ── 4. Heartbeat: while no progress in last 5s and stream still open,
+      // emit an SSE comment line. Independent timer — does NOT block dispatch.
+      const heartbeat = setInterval(() => {
+        if (closed) return;
+        if (Date.now() - lastEventAt >= PPTX_HEARTBEAT_MS) {
+          safeEnqueue(":keepalive\n\n");
+        }
+      }, PPTX_HEARTBEAT_MS);
+
+      // ── 5. Disconnect detection: when the client aborts, abort the worker
+      // (SIGTERM via provider.abortRequest), unsubscribe, clear heartbeat.
+      const onAbort = () => {
+        try { provider.abortRequest(requestId); } catch { /* best-effort */ }
+      };
+      abortSignal?.addEventListener("abort", onAbort);
+
+      // ── 6. Build the chat completion request payload exactly as the API
+      // layer (T10) does: spread original body + canva-pptx extras + this
+      // request_id (so T8 emits progress under the same id we subscribed to).
+      const dispatchRequest: ChatCompletionRequest & CanvaPptxRequestExtras = {
+        ...body,
+        model: "canva-pptx",
+        stream: false,
+        slide_count: slideCount,
+        format: validatedFormat,
+        save_local: true,
+        request_id: requestId,
+        metadata: {
+          ...meta,
+          slide_count: slideCount,
+          format: validatedFormat,
+          save_local: true,
+          request_id: requestId,
+        },
+      };
+
+      // Redacted log (no full messages — could contain secrets).
+      console.log(`[proxy:canva-pptx-sse] req=${requestId} acct=${account.id} slides=${slideCount} fmt=${validatedFormat} prompt_len=${prompt.length}`);
+
+      const quotaBefore = Number(account.quotaRemaining || 0);
+      let trackingActive = false;
+      try {
+        pool.trackRequestStart(account.id);
+        trackingActive = true;
+
+        // ── 7. Dispatch the worker. provider.chatCompletion routes to
+        // chatCompletionPptx because model === "canva-pptx" (T8 dispatch).
+        const result = await provider.chatCompletion(account, dispatchRequest);
+        const durationMs = Date.now() - startedAt;
+
+        if (!result.success || !result.response) {
+          // Worker-level failure. Translate via T10's error-classification
+          // family in spirit (we don't set an HTTP status — already streaming).
+          const errorMessage = result.error || "PPTX generation failed";
+          safeEnqueue(buildPptxChunk(requestId, model, { content: `❌ Error: ${errorMessage}\n` }));
+          safeEnqueue(buildPptxChunk(requestId, model, {}, "stop"));
+          safeEnqueue("data: [DONE]\n\n");
+
+          void recordRequest({
+            accountId: account.id,
+            accountEmail: account.email,
+            provider: "canva",
+            model,
+            promptTokens: 0,
+            completionTokens: 0,
+            totalTokens: 0,
+            creditsUsed: 0,
+            status: "error",
+            durationMs,
+            errorMessage,
+            requestBody: prepareLogBody({ model, stream: true, _poolprox: { source: "proxy.canva-pptx-sse", request_id: requestId } }),
+            accountQuotaBefore: quotaBefore,
+            accountQuotaAfter: quotaBefore,
+          });
+          return;
+        }
+
+        // Persist refreshed tokens if the provider rotated them mid-call.
+        if (result.tokens) {
+          try { await pool.updateTokens(account.id, result.tokens); } catch { /* best-effort */ }
+        }
+        await pool.markUsed(account.id);
+
+        // ── 8. Final result: write the markdown content T8's
+        // formatPptxContent produced as ONE final chunk + finish_reason stop.
+        const finalContent =
+          (result.response.choices?.[0]?.message?.content as string | undefined) ?? "";
+        safeEnqueue(buildPptxChunk(requestId, model, { content: finalContent }, "stop"));
+        safeEnqueue("data: [DONE]\n\n");
+
+        const creditsUsed = Number(result.creditsUsed || 0);
+        void recordRequest({
+          accountId: account.id,
+          accountEmail: account.email,
+          provider: "canva",
+          model,
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+          creditsUsed,
+          status: "success",
+          durationMs,
+          accountQuotaBefore: quotaBefore,
+          accountQuotaAfter: Math.max(0, quotaBefore - creditsUsed),
+          // createdAt left undefined: schema $defaultFn(() => new Date()).
+          requestBody: prepareLogBody({ model, stream: true, _poolprox: { source: "proxy.canva-pptx-sse", request_id: requestId } }),
+        });
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        safeEnqueue(buildPptxChunk(requestId, model, { content: `❌ Error: ${errMsg}\n` }));
+        safeEnqueue(buildPptxChunk(requestId, model, {}, "stop"));
+        safeEnqueue("data: [DONE]\n\n");
+        broadcast({ type: "request_error", data: { model, error: errMsg } });
+      } finally {
+        // ── 9. ALWAYS clean up: unsubscribe, clear heartbeat, drop abort
+        // listener, abort the worker if the client disconnected, end tracking.
+        try { unsubscribe(); } catch { /* idempotent */ }
+        try { clearInterval(heartbeat); } catch { /* idempotent */ }
+        try { abortSignal?.removeEventListener("abort", onAbort); } catch { /* idempotent */ }
+        if (abortSignal?.aborted) {
+          try { provider.abortRequest(requestId); } catch { /* best-effort */ }
+        }
+        if (trackingActive) {
+          try { pool.trackRequestEnd(account.id); } catch { /* best-effort */ }
+        }
+        safeClose();
+      }
+    },
+    cancel() {
+      // Client cancelled the stream. abortSignal-driven cleanup above runs
+      // via the controller's start() finally block. Nothing extra here.
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}
+
 async function handleChatCompletion(body: ChatCompletionRequest) {
   // Rewrite the incoming model id to its mapped target (CLI integration, e.g.
   // the assistant's hardcoded haiku/sonnet/opus ids -> a model in the pool).
@@ -673,6 +990,15 @@ proxyRouter.post("/v1/chat/completions", async (c) => {
 
   body.model = normalizeModelId(body.model);
   const isStream = body.stream === true;
+
+  // ── canva-pptx streaming branch (T11) ─────────────────────────
+  // Push-style SSE driven by progress events from the python worker
+  // (T7 → T8 → subscribeToProgress). The non-streaming branch falls
+  // through to the generic handleChatCompletion path below — T8's
+  // chatCompletion() already dispatches canva-pptx → chatCompletionPptx.
+  if (body.model === "canva-pptx" && isStream) {
+    return handleCanvaPptxSseStream(body, c.req.raw.signal);
+  }
 
   try {
     const { result } = await handleChatCompletion(body);

@@ -1,0 +1,14 @@
+﻿Status: 200 OK
+Response:
+{
+    "id":  8,
+    "name":  "e2e-test",
+    "models":  [
+                   "canva-image",
+                   "qd-Auto"
+               ],
+    "strategy":  "round-robin",
+    "stickyLimit":  3,
+    "createdAt":  "2026-06-14T01:30:52.000Z",
+    "updatedAt":  "2026-06-14T01:30:52.000Z"
+}

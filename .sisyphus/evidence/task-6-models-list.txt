@@ -1,0 +1,13 @@
+﻿=== Scenario: Combos appear in /api/models (Task 6) ===
+After creating combo "task6-test-combo":
+GET /api/models response (owned_by=combo entries):
+{
+    "id":  "task6-test-combo",
+    "object":  "model",
+    "created":  1781399400,
+    "owned_by":  "combo"
+}
+
+ASSERT: at least 1 combo entry with owned_by="combo" -> FAIL
+ASSERT: id="task6-test-combo" present -> PASS
+Total models including combos: 72

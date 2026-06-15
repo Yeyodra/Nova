@@ -1,0 +1,9 @@
+﻿Status: 200 OK
+Combo present: True
+Matching entry:
+{
+    "id":  "e2e-test",
+    "object":  "model",
+    "created":  1781400652,
+    "owned_by":  "combo"
+}

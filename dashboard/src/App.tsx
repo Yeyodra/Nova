@@ -17,6 +17,7 @@ const BotLogs = lazy(() => import("./pages/BotLogs"));
 const VccPool = lazy(() => import("./pages/VccPool"));
 const ProxyPool = lazy(() => import("./pages/ProxyPool"));
 const ImageStudio = lazy(() => import("./pages/ImageStudio"));
+const PptxStudio = lazy(() => import("./pages/PptxStudio"));
 const FilterRules = lazy(() => import("./pages/FilterRules"));
 const Combos = lazy(() => import("./pages/Combos"));
 const EmailProviderFilter = lazy(() => import("./pages/EmailProviderFilter"));
@@ -97,6 +98,7 @@ export default function App() {
           <Route path="/integration" element={<Integration />} />
           <Route path="/tunnel" element={<Tunnel />} />
           <Route path="/image-studio" element={<ImageStudio />} />
+          <Route path="/pptx-studio" element={<PptxStudio />} />
           <Route path="/oauth/codex/callback" element={<CodexOAuthCallback />} />
         </Route>
       </Routes>

@@ -1,0 +1,9 @@
+﻿=== Scenario: Reject name colliding with real model ===
+REQUEST: POST /api/combos
+BODY: {"name":"canva-image","models":["kiro/the-assistant-3.5-haiku-20241022"]}
+RESPONSE:
+{"error":"name collides with existing model id: canva-image"} HTTP_STATUS:400
+
+NOTE: The plan example used name="model"/"gpt-4.1", but those are not present
+in this environment's model registry. We use "canva-image" which IS registered
+(see /api/models).

@@ -1,0 +1,31 @@
+=== Task 5 Evidence: Combo routing with stream:true ===
+Captured by: scripts/task5-evidence.ts
+
+The stream flag is passed through unchanged:
+  isStream = body.stream === true
+  handleComboRequest(body, rotated, comboName, isStream)
+which forwards to:
+  routeRequest(subBody, stream)  // per sub-model attempt
+
+The downstream SSE wrapping (wrapStreamWithUsageFinalizer at lines 527-540 of
+proxy/index.ts) is unchanged — handleComboRequest returns the same
+RouteResult shape (with .result.stream populated for SSE responses), so the
+existing stream branch picks it up exactly as it did for direct routeRequest
+returns.
+
+--- Captured run ---
+=== Scenario 3: stream=true propagates to routeRequest ===
+[Combos] combo="my-combo" sub-model="model-a" failed: exhausted
+Calls made:
+  { model: "model-a", stream: true }
+  { model: "model-b", stream: true }
+Winning model: model-b
+Stream flag in calls: true   <- ALL sub-model attempts got stream=true
+
+--- Why winningModel matters for streaming ---
+After the combo branch resolves, body.model is reassigned to winningModel.
+The stream wrapper context at line 532 uses body.model:
+  model: body.model,
+which now correctly records the actual upstream model (e.g. "model-b") that
+served the stream — not the combo alias. Combo name is recorded separately
+via _poolprox.comboName in the log entry.

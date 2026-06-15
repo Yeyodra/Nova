@@ -251,6 +251,94 @@ curl http://localhost:1930/api/stats \
 
 ---
 
+## Opencode CLI Integration
+
+Etteum Pool exposes an OpenAI-compatible `/v1/chat/completions` endpoint, so any OpenAI-compatible client can drive it, including the [Opencode CLI](https://opencode.ai) via `@ai-sdk/openai-compatible`. The pool ships three Canva-backed models: `canva-image`, `canva-video`, and `canva-pptx`. The `canva-pptx` model produces a presentation file (PPTX by default, with PDF and MP4 also supported by the underlying provider) and emits live progress chunks while the design is generated, materialized, exported, and downloaded.
+
+### Configuration
+
+Add an `etteum` provider entry to `~/.config/opencode/opencode.json` (Linux/macOS) or `%USERPROFILE%\.config\opencode\opencode.json` (Windows):
+
+```json
+{
+  "provider": {
+    "etteum": {
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "http://127.0.0.1:1930/v1",
+        "apiKey": "<your-etteum-api-key>"
+      },
+      "models": {
+        "canva-pptx": {
+          "name": "Canva PPTX/PDF/MP4 Generator",
+          "modalities": { "input": ["text"], "output": ["text"] }
+        },
+        "canva-image": {
+          "name": "Canva Image Generator",
+          "modalities": { "input": ["text"], "output": ["text"] }
+        },
+        "canva-video": {
+          "name": "Canva Video Generator",
+          "modalities": { "input": ["text"], "output": ["text"] }
+        }
+      }
+    }
+  }
+}
+```
+
+`baseURL` must point at `/v1` on the API port (default `1930`, matching the `PORT` env var). If you've changed `PORT`, update the URL accordingly.
+
+### Usage
+
+```bash
+# Basic — model id is namespaced as <provider>/<model>
+opencode -m etteum/canva-pptx "buat ppt 7 slide tentang sejarah Indonesia"
+```
+
+The provider parses natural-language slide-count cues from the prompt (e.g. "10 slide tentang ...") and falls back to a default of 5 slides when no count is given:
+
+```bash
+opencode -m etteum/canva-pptx "10 slide tentang machine learning untuk pemula"
+```
+
+For reliable, programmatic control over the slide count and output format, call `/v1/chat/completions` directly and pass `metadata.slide_count` / `metadata.format`. From the Opencode CLI, only PPTX is the practical default unless your CLI build exposes a way to set request metadata. PDF and MP4 export are supported via the `metadata.format` parameter when calling the endpoint programmatically.
+
+### Generating an API key
+
+1. Open the dashboard at **http://localhost:1931** (or `DASHBOARD_PORT` if customized).
+2. Navigate to **Settings → API Keys**.
+3. Click **Generate** and copy the key.
+4. Paste it into the `apiKey` field of the config snippet above.
+
+If you've changed `PORT` from the default `1930`, update `baseURL` in the config to match (e.g. `http://127.0.0.1:8080/v1`).
+
+### Streaming behavior
+
+A single `canva-pptx` request typically takes ~30-60 seconds end-to-end. Opencode's streaming UI surfaces progress as text deltas arrive from the server. You'll see emoji-prefixed status chunks for each pipeline stage:
+
+| Stage | Emoji | Meaning |
+|-------|-------|---------|
+| `thread_create` | 🧠 | Opening a Canva design thread |
+| `outline_wait` | 📋 | Waiting on the outline / planning step |
+| `design_render` | 🎨 | Rendering slides |
+| `materialize` | 💾 | Committing the design (credits debit here) |
+| `export` | 📤 | Exporting to the requested format |
+| `download` | ⬇️ | Fetching the presigned download URL |
+| `done` | ✅ | Final reply ready |
+
+The final chunk is a markdown reply containing the **design URL** (edit on Canva) and the **download URL** (presigned S3 link).
+
+### Caveats
+
+- **Slide count**: 1-50 hard cap (Canva's own limit). Default is 5 when the prompt doesn't specify one.
+- **Credit cost**: ~2 Canva credits per generation per account, regardless of slide count (empirical).
+- **Pool behavior**: Multiple Canva accounts in the pool round-robin automatically. There is no per-user rate limiting.
+- **Expiring downloads**: The download URL is a Canva S3 presigned URL and will expire. Save the file shortly after generation, or re-export via the dashboard / `POST /api/image-studio/results/:id/re-export` (costs 1 additional credit).
+- **No prompt-only format selection**: Asking for "a PDF" in the prompt will not switch the export format. Use the `metadata.format` request parameter for PDF/MP4.
+
+---
+
 ## Development
 
 ### Project Structure

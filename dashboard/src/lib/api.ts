@@ -736,3 +736,241 @@ export async function restoreAccounts(data: any, strategy: "skip" | "overwrite" 
     body: JSON.stringify(data),
   });
 }
+
+// ─── PPTX Studio (T14) ────────────────────────────────────────────────
+//
+// Mirrors the existing image-studio function set but exposes a typed
+// `pptxStudio` namespace for the dashboard's PPTX UI. Non-streaming calls
+// hit `/api/image-studio/*` (T10 + T12 endpoints) via the same `fetchApi`
+// wrapper used everywhere else. Streaming uses POST `/v1/chat/completions`
+// with `stream: true` and requires an API key (Bearer token) from
+// localStorage["api_key"] (set in the ApiKey page).
+
+export type PptxFormat = "pptx" | "pdf" | "mp4";
+
+export interface PptxGenerateOptions {
+  prompt: string;
+  slideCount?: number;
+  format?: PptxFormat;
+  saveLocal?: boolean;
+}
+
+/**
+ * PPTX-specific result envelope. Matches the JSON returned by T10's
+ * `handlePptxGenerate` (src/api/image-studio.ts L399-410). `pptx_path` and
+ * `s3_expires_at` are nullable because they are not always recoverable from
+ * the worker output (see learnings.md "T10 Notes").
+ */
+export interface PptxResult {
+  id: number | undefined;
+  design_url: string | null;
+  pptx_url: string | null;
+  pptx_path: string | null;
+  slide_count: number;
+  credits_used: number;
+  format: PptxFormat;
+  title: string;
+  s3_expires_at: number | null;
+  account: { id: number; email: string };
+}
+
+/**
+ * Stored PPTX row as returned by GET /api/image-studio/results. Mirrors the
+ * imageStudioResults schema (camelCase columns). Distinct from `PptxResult`
+ * which is the snake_case generate-response envelope.
+ */
+export interface StoredPptxResult {
+  id: number;
+  chatId: number | null;
+  prompt: string;
+  type: "pptx";
+  aspectRatio: string;
+  n: number;
+  urls: string[];
+  creditsUsed: number;
+  createdAt: string;
+  // T1 PPTX-specific columns
+  designUrl: string | null;
+  pptxUrl: string | null;
+  pptxPath: string | null;
+  slideCount: number | null;
+  pptxCreditsUsed: number | null;
+  s3ExpiresAt: number | null;
+  format: string | null;
+  dedupeKey: string | null;
+}
+
+/** Streaming chunk surfaced to callers of `streamPptxGenerate`. */
+export interface PptxStreamChunk {
+  content?: string;
+  done?: boolean;
+  error?: string;
+}
+
+function getStoredApiKey(): string | null {
+  // Same key the ApiKey page writes — see dashboard/src/pages/ApiKey.tsx.
+  return localStorage.getItem("api_key");
+}
+
+export const pptxStudio = {
+  /**
+   * POST /api/image-studio/generate with `type: "pptx"`. Uses dashboard auth
+   * (Bearer dashboard_token via fetchApi), NOT the user's API key.
+   */
+  async generatePptx(opts: PptxGenerateOptions): Promise<PptxResult> {
+    return fetchApi<PptxResult>("/api/image-studio/generate", {
+      method: "POST",
+      body: JSON.stringify({
+        type: "pptx",
+        prompt: opts.prompt,
+        slideCount: opts.slideCount,
+        format: opts.format,
+        saveLocal: opts.saveLocal,
+      }),
+      timeoutMs: 600_000,
+    });
+  },
+
+  /**
+   * GET /api/image-studio/results — server endpoint does NOT support
+   * `?type=pptx` filtering (verified in src/api/image-studio.ts L626-641),
+   * so we fetch everything and filter client-side.
+   *
+   * Returns `StoredPptxResult[]` (DB row shape) — distinct from `PptxResult`
+   * which is the generate-endpoint envelope.
+   */
+  async listPptxResults(): Promise<StoredPptxResult[]> {
+    const res = await fetchApi<{ data: Array<Record<string, unknown>> }>(
+      "/api/image-studio/results",
+    );
+    return (res.data || []).filter((r) => r.type === "pptx") as unknown as StoredPptxResult[];
+  },
+
+  /** DELETE /api/image-studio/results/:id (same endpoint as imageStudio). */
+  async deletePptxResult(id: number | string): Promise<void> {
+    await fetchApi(`/api/image-studio/results/${id}`, { method: "DELETE" });
+  },
+
+  /** POST /api/image-studio/results/:id/re-export (T12). */
+  async reExportPptx(id: number | string): Promise<{ pptx_url: string; s3_expires_at: number }> {
+    return fetchApi<{ pptx_url: string; s3_expires_at: number }>(
+      `/api/image-studio/results/${id}/re-export`,
+      { method: "POST", timeoutMs: 600_000 },
+    );
+  },
+
+  /**
+   * POST /v1/chat/completions with `stream: true`, model `canva-pptx`.
+   * Consumes the SSE response body via fetch+ReadableStream and surfaces
+   * delta.content strings via `onChunk`. Requires an API key — throws
+   * before the request if none is stored.
+   */
+  async streamPptxGenerate(
+    opts: PptxGenerateOptions,
+    onChunk: (chunk: PptxStreamChunk) => void,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const apiKey = getStoredApiKey();
+    if (!apiKey) {
+      throw new Error("API key not set. Open the API Key page and save a key before streaming PPTX generation.");
+    }
+
+    const res = await fetch(`${API_BASE}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+        "Accept": "text/event-stream",
+      },
+      signal,
+      body: JSON.stringify({
+        model: "canva-pptx",
+        stream: true,
+        messages: [{ role: "user", content: opts.prompt }],
+        metadata: {
+          slide_count: opts.slideCount,
+          format: opts.format,
+          save_local: opts.saveLocal,
+        },
+      }),
+    });
+
+    if (!res.ok || !res.body) {
+      let message = `Stream request failed: ${res.status}`;
+      try {
+        const body = await res.json();
+        message = body.error?.message || body.error || body.message || message;
+      } catch {
+        const text = await res.text().catch(() => "");
+        if (text) message = text;
+      }
+      throw new Error(message);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // SSE frames are separated by a blank line.
+        let sepIdx = buffer.indexOf("\n\n");
+        while (sepIdx !== -1) {
+          const frame = buffer.slice(0, sepIdx);
+          buffer = buffer.slice(sepIdx + 2);
+          sepIdx = buffer.indexOf("\n\n");
+
+          // A frame may have multiple lines; collect all `data:` lines.
+          const dataLines: string[] = [];
+          for (const rawLine of frame.split("\n")) {
+            const line = rawLine.replace(/\r$/, "");
+            if (!line || line.startsWith(":")) continue; // heartbeat / comment
+            if (line.startsWith("data:")) {
+              dataLines.push(line.slice(5).trimStart());
+            }
+          }
+          if (dataLines.length === 0) continue;
+          const payload = dataLines.join("\n");
+
+          if (payload === "[DONE]") {
+            onChunk({ done: true });
+            return;
+          }
+
+          try {
+            const parsed = JSON.parse(payload) as {
+              choices?: Array<{ delta?: { content?: string }; finish_reason?: string | null }>;
+              error?: { message?: string } | string;
+            };
+            if (parsed.error) {
+              const msg = typeof parsed.error === "string"
+                ? parsed.error
+                : parsed.error.message || "stream error";
+              onChunk({ error: msg });
+              continue;
+            }
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (typeof content === "string" && content.length > 0) {
+              onChunk({ content });
+            }
+          } catch {
+            // Ignore unparseable frames — protocol-level junk shouldn't kill the consumer.
+          }
+        }
+      }
+
+      // Stream ended without an explicit [DONE] frame.
+      onChunk({ done: true });
+    } finally {
+      try {
+        reader.releaseLock();
+      } catch {
+        // already released
+      }
+    }
+  },
+};

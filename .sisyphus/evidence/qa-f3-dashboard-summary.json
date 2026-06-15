@@ -1,0 +1,35 @@
+{
+  "results": {
+    "S15": {
+      "pass": true,
+      "detail": "combos heading=true, url=http://localhost:1931/combos"
+    },
+    "S16": {
+      "pass": true,
+      "detail": "row visible: true"
+    },
+    "S17": {
+      "pass": true,
+      "detail": "nameDisabled=true, rowVisible=true, fallbackInRow=true"
+    },
+    "S18": {
+      "pass": true,
+      "detail": "row removed: true, emptyState: true"
+    },
+    "S19": {
+      "pass": true,
+      "detail": "sectionVisible=true, apiStrategy=round-robin, apiSticky=5"
+    },
+    "S20": {
+      "pass": true,
+      "detail": "stickyLabelCount=0, anyNumberInputs=1, hidden=true"
+    }
+  },
+  "errs": [
+    "WebSocket connection to 'ws://localhost:1930/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED",
+    "WebSocket connection to 'ws://localhost:1930/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED",
+    "WebSocket connection to 'ws://localhost:1930/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED",
+    "WebSocket connection to 'ws://localhost:1930/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED",
+    "WebSocket connection to 'ws://localhost:1930/ws' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED"
+  ]
+}

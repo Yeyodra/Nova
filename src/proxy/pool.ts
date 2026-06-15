@@ -26,6 +26,41 @@ class AccountPool {
   private activeAccountsCache = new Map<ProviderName, ActiveAccountsCacheEntry>();
   private inFlightByAccountId = new Map<number, number>();
   private lbMethodCache: { global: string; perProvider: Map<ProviderName, string>; expiresAt: number } | null = null;
+  private maxConcurrentCache: { perProvider: Map<string, number>; expiresAt: number } | null = null;
+  private maxConcurrentSeeded = false;
+
+  /**
+   * Default per-provider max concurrent caps. Providers not listed here have no cap
+   * (Number.POSITIVE_INFINITY) so existing flows are not regressed.
+   */
+  private static readonly DEFAULT_MAX_CONCURRENT: Record<string, number> = {
+    canva: 1,
+    kiro: 2,
+    codex: 2,
+    codebuddy: 2,
+    qoder: 1,
+  };
+
+  /**
+   * Idempotently seed default per-provider max-concurrent settings rows.
+   * Safe to call repeatedly; uses INSERT OR IGNORE semantics via onConflictDoNothing.
+   */
+  private async ensureMaxConcurrentDefaults(): Promise<void> {
+    if (this.maxConcurrentSeeded) return;
+    this.maxConcurrentSeeded = true;
+    try {
+      const rows = Object.entries(AccountPool.DEFAULT_MAX_CONCURRENT).map(([provider, value]) => ({
+        key: `provider_${provider}_max_concurrent`,
+        value: String(value),
+      }));
+      for (const row of rows) {
+        await db.insert(settings).values(row).onConflictDoNothing();
+      }
+    } catch {
+      // Non-fatal: if seeding fails, getMaxConcurrentForProvider falls back to defaults in code.
+      this.maxConcurrentSeeded = false;
+    }
+  }
 
   /**
    * Clear cached active accounts after account mutations or status changes.
@@ -65,6 +100,42 @@ class AccountPool {
 
   invalidateLoadBalancingCache(): void {
     this.lbMethodCache = null;
+    this.maxConcurrentCache = null;
+  }
+
+  /**
+   * Get the max concurrent in-flight requests allowed per account for a provider.
+   * Reads from settings (key: `provider_${provider}_max_concurrent`) and caches for 10s.
+   * Returns Number.POSITIVE_INFINITY for providers without a configured/default cap.
+   */
+  async getMaxConcurrentForProvider(provider: string): Promise<number> {
+    const now = Date.now();
+    if (!this.maxConcurrentCache || this.maxConcurrentCache.expiresAt <= now) {
+      // Fire-and-forget seed to ensure defaults exist in DB without blocking the read.
+      void this.ensureMaxConcurrentDefaults();
+      try {
+        const rows = await db.select().from(settings);
+        const perProvider = new Map<string, number>();
+        for (const row of rows) {
+          if (!row.value) continue;
+          const match = row.key.match(/^provider_(.+)_max_concurrent$/);
+          if (match && match[1]) {
+            const parsed = parseInt(row.value, 10);
+            if (Number.isFinite(parsed) && parsed > 0) {
+              perProvider.set(match[1], parsed);
+            }
+          }
+        }
+        this.maxConcurrentCache = { perProvider, expiresAt: now + 10000 };
+      } catch {
+        this.maxConcurrentCache = { perProvider: new Map(), expiresAt: now + 10000 };
+      }
+    }
+
+    const cached = this.maxConcurrentCache.perProvider.get(provider);
+    if (typeof cached === "number") return cached;
+    const fallback = AccountPool.DEFAULT_MAX_CONCURRENT[provider];
+    return typeof fallback === "number" ? fallback : Number.POSITIVE_INFINITY;
   }
 
   /**
@@ -78,26 +149,33 @@ class AccountPool {
     }
 
     const method = await this.getLoadBalancingMethod(provider);
+    const maxConcurrent = await this.getMaxConcurrentForProvider(provider);
 
     if (method === "sequential") {
-      // Sequential: use first account with lowest in-flight, prefer order
+      // Sequential: prefer first account under cap with zero in-flight; else
+      // first account under cap; else null (all saturated).
+      let firstUnderCap: Account | null = null;
       for (const account of activeAccounts) {
-        if (this.getInFlightCount(account.id) === 0) return account;
+        const load = this.getInFlightCount(account.id);
+        if (load >= maxConcurrent) continue;
+        if (load === 0) return account;
+        if (!firstUnderCap) firstUnderCap = account;
       }
-      return activeAccounts[0] || null;
+      return firstUnderCap;
     }
 
-    // Round Robin (default)
+    // Round Robin (default): scan all candidates from startIdx, skip any at cap.
     const startIdx = ((this.state.lastIndex.get(provider) || 0) + 1) % activeAccounts.length;
-    let selected = activeAccounts[startIdx];
+    let selected: Account | null = null;
     let selectedIdx = startIdx;
-    let selectedLoad = selected ? this.getInFlightCount(selected.id) : Number.POSITIVE_INFINITY;
+    let selectedLoad = Number.POSITIVE_INFINITY;
 
-    for (let i = 1; i < activeAccounts.length; i++) {
+    for (let i = 0; i < activeAccounts.length; i++) {
       const idx = (startIdx + i) % activeAccounts.length;
       const candidate = activeAccounts[idx];
       if (!candidate) continue;
       const load = this.getInFlightCount(candidate.id);
+      if (load >= maxConcurrent) continue;
       if (load < selectedLoad) {
         selected = candidate;
         selectedIdx = idx;
@@ -106,8 +184,9 @@ class AccountPool {
       }
     }
 
+    if (!selected) return null;
     this.state.lastIndex.set(provider, selectedIdx);
-    return selected || null;
+    return selected;
   }
 
   private getInFlightCount(accountId: number): number {

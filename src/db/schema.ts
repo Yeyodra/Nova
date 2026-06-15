@@ -128,6 +128,15 @@ export const imageStudioResults = sqliteTable("image_studio_results", {
   n: integer("n").notNull().default(1),
   urls: text("urls", { mode: "json" }).notNull().$defaultFn(() => []),
   creditsUsed: real("credits_used").default(0),
+  // PPTX/Canva feature (T1) - all NULL-able for backward compat
+  designUrl: text("design_url"),
+  pptxUrl: text("pptx_url"),
+  pptxPath: text("pptx_path"),
+  slideCount: integer("slide_count"),
+  pptxCreditsUsed: integer("pptx_credits_used"),
+  s3ExpiresAt: integer("s3_expires_at"), // unix timestamp
+  dedupeKey: text("dedupe_key"),
+  format: text("format"), // pptx | pdf | mp4
   createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 }, (table) => [
   index("image_studio_results_created_at_idx").on(table.createdAt),

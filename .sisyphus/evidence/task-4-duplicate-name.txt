@@ -1,0 +1,6 @@
+﻿=== Scenario: Reject duplicate name ===
+First create:
+{"id":4,"name":"dup-test","models":["kiro/the-assistant-3.5-haiku-20241022"],"strategy":null,"stickyLimit":null,"createdAt":"2026-06-14T01:09:08.000Z","updatedAt":"2026-06-14T01:09:08.000Z"} HTTP_STATUS:201
+
+Second create (expect 400):
+{"error":"Combo name already exists"} HTTP_STATUS:400

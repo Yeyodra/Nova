@@ -1,0 +1,17 @@
+﻿Create combo Status: 201 Created
+Create Response: {
+    "id":  9,
+    "name":  "allfail-test",
+    "models":  [
+                   "nonexistent-model-1",
+                   "nonexistent-model-2"
+               ],
+    "strategy":  null,
+    "stickyLimit":  null,
+    "createdAt":  "2026-06-14T01:30:53.000Z",
+    "updatedAt":  "2026-06-14T01:30:53.000Z"
+}
+
+Chat Status: 400
+Chat Response: 
+Error: The remote server returned an error: (400) Bad Request.

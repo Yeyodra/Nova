@@ -1,0 +1,1 @@
+﻿{"error":"Slide count must be 1-50 (Canva hard cap)"}

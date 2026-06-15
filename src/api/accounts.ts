@@ -807,6 +807,38 @@ accountsRouter.post("/:id/login", async (c) => {
 });
 
 /**
+ * POST /api/accounts/:id/refresh - Enqueue a background re-login (token refresh).
+ *
+ * Provider-agnostic: works for any provider whose refresh path is the same as
+ * its initial login path (kiro, kiro-pro, codebuddy, canva, ...). The auth queue
+ * dedupes per-account, so concurrent refresh requests for the same account are
+ * collapsed into a single in-flight job.
+ *
+ * Returns 202 Accepted immediately; the actual refresh runs in the background
+ * and broadcasts `login_success` / `login_failed` WS events on completion.
+ */
+accountsRouter.post("/:id/refresh", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isFinite(id)) {
+    return c.json({ error: "Invalid account id" }, 400);
+  }
+
+  const [account] = await db
+    .select()
+    .from(accounts)
+    .where(eq(accounts.id, id));
+
+  if (!account) {
+    return c.json({ error: "Account not found" }, 404);
+  }
+
+  // Fire-and-forget: enqueue, do not await the actual refresh.
+  loginQueue.enqueue(id);
+
+  return c.json({ accepted: true, accountId: id, provider: account.provider }, 202);
+});
+
+/**
  * POST /api/accounts/:id/refresh-quota - Refresh quota for account
  */
 accountsRouter.post("/:id/refresh-quota", async (c) => {

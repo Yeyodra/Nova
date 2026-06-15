@@ -1,0 +1,126 @@
+{
+  "active_plan": "C:\\Users\\Nazril\\Documents\\Projek\\Github\\etteum-pool\\.sisyphus\\plans\\canva-pptx-feature.md",
+  "started_at": "2026-06-14T11:48:38.626Z",
+  "session_ids": [
+    "ses_13a099fdeffeT6wlVL3Kz45WJ8",
+    "ses_139b58484ffemSiKmV5r66OAFf",
+    "ses_139b45b66ffeJkKLA6SizF0osD",
+    "ses_139b3be3fffev6miXsDxyJ5JUf",
+    "ses_139b3b919ffemWRYjZJTFFteAO",
+    "ses_139b1b70bffermyDsZyGCAMC8j",
+    "ses_139af61c5ffe8urj4zLzfcitWw",
+    "ses_139af5e45ffeLhbmQK0f18UD0O",
+    "ses_139aed92fffe2Ypy076Ry3OP7U",
+    "ses_139ae52adffezN2Ff093rnwdVJ",
+    "ses_139991f1fffeHKsPfCj5QyeDC5",
+    "ses_139991c36ffeVBFa9HkK9764PB"
+  ],
+  "session_origins": {
+    "ses_13a099fdeffeT6wlVL3Kz45WJ8": "direct",
+    "ses_139b58484ffemSiKmV5r66OAFf": "appended",
+    "ses_139b45b66ffeJkKLA6SizF0osD": "appended",
+    "ses_139b3be3fffev6miXsDxyJ5JUf": "appended",
+    "ses_139b3b919ffemWRYjZJTFFteAO": "appended",
+    "ses_139b1b70bffermyDsZyGCAMC8j": "direct",
+    "ses_139af61c5ffe8urj4zLzfcitWw": "appended",
+    "ses_139af5e45ffeLhbmQK0f18UD0O": "appended",
+    "ses_139aed92fffe2Ypy076Ry3OP7U": "appended",
+    "ses_139ae52adffezN2Ff093rnwdVJ": "appended",
+    "ses_139991f1fffeHKsPfCj5QyeDC5": "appended",
+    "ses_139991c36ffeVBFa9HkK9764PB": "appended"
+  },
+  "plan_name": "canva-pptx-feature",
+  "agent": "atlas",
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "**DB schema extension + migration**",
+      "session_id": "ses_13a063c2affekNjLP8ULv7pDX6",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-06-14T11:56:09.491Z"
+    },
+    "todo:6": {
+      "task_key": "todo:6",
+      "task_label": "6",
+      "task_title": "**Worker mode `pptx` — full 8-step pipeline**",
+      "session_id": "ses_139fa9a2bffecBkUUsEY1fxRiK",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-06-14T12:11:33.773Z"
+    },
+    "todo:7": {
+      "task_key": "todo:7",
+      "task_label": "7",
+      "task_title": "**Worker abort handler + dedupe**",
+      "session_id": "ses_139f3600fffeOkCDK9BfdUB846",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-06-14T12:19:04.350Z"
+    },
+    "todo:9": {
+      "task_key": "todo:9",
+      "task_label": "9",
+      "task_title": "**Registry registration `canva-pptx`**",
+      "session_id": "ses_139e4627effeuD1d1x8E6xWjAJ",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-06-14T12:34:22.536Z"
+    },
+    "todo:11": {
+      "task_key": "todo:11",
+      "task_label": "11",
+      "task_title": "**SSE streaming for `/v1/chat/completions` model `canva-pptx`**",
+      "session_id": "ses_139d5b514ffeVd5MFHbauI99Ks",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-06-14T12:58:36.885Z"
+    },
+    "todo:14": {
+      "task_key": "todo:14",
+      "task_label": "14",
+      "task_title": "**API client lib `pptxStudio*` exports**",
+      "session_id": "ses_139c76474ffejU6zTaNg1JpX48",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-06-14T13:06:55.044Z"
+    },
+    "todo:15": {
+      "task_key": "todo:15",
+      "task_label": "15",
+      "task_title": "**`PptxStudio.tsx` page**",
+      "session_id": "ses_139bfff61ffe6Yc979bzYqsDBh",
+      "agent": "Sisyphus-Junior",
+      "category": "visual-engineering",
+      "updated_at": "2026-06-14T13:14:38.023Z"
+    },
+    "todo:16": {
+      "task_key": "todo:16",
+      "task_label": "16",
+      "task_title": "**Sidebar nav + routing**",
+      "session_id": "ses_139ba0844ffexJzzVm0PJTIMgr",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-06-14T13:17:18.720Z"
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** — `oracle` (Confucius unavailable, oracle is best alternative for read-only audit)",
+      "session_id": "ses_139aed92fffe2Ypy076Ry3OP7U",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-06-14T13:42:41.321Z"
+    },
+    "final-wave:f2": {
+      "task_key": "final-wave:f2",
+      "task_label": "F2",
+      "task_title": "**Code Quality Review** — `unspecified-high`",
+      "session_id": "ses_139991c36ffeVBFa9HkK9764PB",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-06-14T13:53:57.467Z"
+    }
+  }
+}

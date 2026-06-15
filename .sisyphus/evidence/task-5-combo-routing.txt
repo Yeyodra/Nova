@@ -1,0 +1,38 @@
+=== Task 5 Evidence: Combo Routing in handleChatCompletion ===
+Captured by: scripts/task5-evidence.ts (Bun in-process, routeRequest mocked)
+
+handleChatCompletion() now:
+  1. Resolves alias on body.model
+  2. Calls resolveCombo(body.model)
+  3. If combo: picks strategy/stickyLimit (per-combo override > combo row > global default),
+     calls getRotatedModels(), then handleComboRequest() — which walks sub-models
+     and returns the first success WITH the winningModel.
+  4. body.model is replaced by winningModel before logging so token tracking
+     records the actual upstream model. _poolprox.comboName preserves the combo
+     name for the request log.
+  5. Non-combo path falls through to routeRequest() unchanged.
+
+--- Scenario 1: fallback strategy skips exhausted sub-model, returns first success ---
+Rotated order: [ "model-a", "model-b", "model-c" ]
+[Combos] combo="my-combo" sub-model="model-a" failed: exhausted
+Calls made:
+  { model: "model-a", stream: false }
+  { model: "model-b", stream: false }
+Winning model: model-b
+Provider:      qoder
+Result success: true
+
+--- Scenario 2: round-robin advances start index per call (stickyLimit=1) ---
+Call 1 order: [ "model-a", "model-b", "model-c" ]
+Call 2 order: [ "model-b", "model-c", "model-a" ]
+Call 3 order: [ "model-c", "model-a", "model-b" ]
+=> consecutiveUseCount >= stickyLimit triggers rotation each time.
+
+--- Verification of integration points ---
+- proxy/index.ts imports: resolveCombo, handleComboRequest, getRotatedModels,
+  getComboByNameCached, getComboStrategy, getComboStickyLimit,
+  getComboSpecificStrategy.
+- The combo branch sits between line 457 (alias resolution) and the destructure
+  of routeOutcome — replacing the original direct routeRequest call.
+- _poolprox.comboName surfaces in the request log (originalComboName captured
+  BEFORE body.model is reassigned to winningModel).

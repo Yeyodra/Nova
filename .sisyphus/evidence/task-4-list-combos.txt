@@ -1,0 +1,4 @@
+﻿=== Scenario: List combos ===
+GET /api/combos
+RESPONSE:
+{"combos":[{"id":4,"name":"dup-test","models":["kiro/the-assistant-3.5-haiku-20241022"],"strategy":null,"stickyLimit":null,"createdAt":"2026-06-14T01:09:08.000Z","updatedAt":"2026-06-14T01:09:08.000Z"},{"id":5,"name":"gpt-4.1","models":["kiro/the-assistant-3.5-haiku-20241022"],"strategy":null,"stickyLimit":null,"createdAt":"2026-06-14T01:09:08.000Z","updatedAt":"2026-06-14T01:09:08.000Z"}]} HTTP_STATUS:200

@@ -1,0 +1,61 @@
+{
+  "agent": "F3",
+  "wave": "final-verification",
+  "plan": "canva-pptx-feature",
+  "timestamp": "2026-06-14T13:38:00+00:00",
+  "verdict": "APPROVE",
+  "server": {
+    "port": 1930,
+    "dashboardPort": 1931,
+    "preExisting": true,
+    "pid": 16652,
+    "killedAtEnd": false,
+    "killReason": "pre-existing user instance, preserved per environment rule"
+  },
+  "scenarios": {
+    "v1Models_canvaPptx_present": "PASS",
+    "validation_slideCount_51_rejects_400": "PASS",
+    "validation_empty_prompt_rejects_400": "PASS",
+    "validation_slideCount_0_rejects_400": "PASS",
+    "validation_invalid_format_rejects_400": "PASS",
+    "results_listing_200": "PASS",
+    "sse_chat_completions_canva_pptx": "PASS",
+    "dashboard_pptx_studio_renders": "PASS",
+    "dashboard_advanced_tab_slider_max_50": "PASS",
+    "dashboard_form_submit_inline_error": "PASS",
+    "db_schema_8_new_columns": "PASS",
+    "edge_no_active_accounts_graceful_502": "PASS",
+    "edge_round_robin_multiple_accounts_live": "NOT_TESTABLE_SINGLE_ACCOUNT",
+    "edge_client_disconnect_aborts_worker": "NOT_TESTABLE_NO_LIVE_GEN",
+    "opencode_cli_streaming": "INDIRECT_VIA_SSE_TEST"
+  },
+  "validationMessages": {
+    "slide51": "Slide count must be 1-50 (Canva hard cap)",
+    "empty": "prompt is required",
+    "slide0": "Slide count must be 1-50 (Canva hard cap)",
+    "badFormat": "Format must be one of: pptx, pdf, mp4"
+  },
+  "sseFirstChunkShape": {
+    "id": "chatcmpl-mejubhhxmqdtu5fp",
+    "object": "chat.completion.chunk",
+    "model": "canva-pptx",
+    "delta_role": "assistant"
+  },
+  "dbColumns": [
+    "design_url",
+    "pptx_url",
+    "pptx_path",
+    "slide_count",
+    "pptx_credits_used",
+    "s3_expires_at",
+    "dedupe_key",
+    "format"
+  ],
+  "canvaAccountsActive": 1,
+  "consoleErrorsOnDashboard": 1,
+  "consoleErrorsExplained": "Single 502 from /api/image-studio/generate when no active account — expected, not a JS bug",
+  "defects": [],
+  "notes": [
+    "scripts/auth/canva.py is not a separate file — Canva auth lives in unified scripts/auth/login.py via CanvaProviderAdapter. Behavioural deliverable satisfied; literal filename nit deferred to F1/F4."
+  ]
+}

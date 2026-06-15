@@ -1,0 +1,4 @@
+﻿=== Scenario: No combos when none exist (Task 6) ===
+GET /api/models -> count of owned_by="combo" entries
+RESULT: 0 (expect 0)
+Total models: 71

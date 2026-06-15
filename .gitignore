@@ -74,6 +74,11 @@ drizzle/
 # Debug artifacts
 *.png
 
+# Local reverse-engineering probes (root-level companions to scripts/probe-*.ts)
+/probe-*.ts
+/.tmp-*.json
+/.tried-*.json
+
 # Claude plans (local only)
 .claude/plans/
 

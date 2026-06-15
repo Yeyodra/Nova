@@ -1,0 +1,4 @@
+﻿=== Scenario: Delete combo resets rotation ===
+DELETE /api/combos/3
+RESPONSE:
+{"success":true} HTTP_STATUS:200

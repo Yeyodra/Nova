@@ -1,0 +1,5 @@
+﻿=== Scenario: Reject invalid combo name ===
+REQUEST: POST /api/combos
+BODY: {"name":"invalid name!","models":["kiro/foo"]}
+RESPONSE:
+{"error":"name may only contain letters, digits, underscore, dot, hyphen"} HTTP_STATUS:400
