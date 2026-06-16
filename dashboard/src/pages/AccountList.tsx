@@ -4,11 +4,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Search, Trash2, RefreshCw, RotateCcw, ExternalLink, ArrowUpDown, ArrowUp, ArrowDown, CheckCircle2, XCircle } from "lucide-react";
+import { ArrowLeft, Search, Trash2, RefreshCw, RotateCcw, ExternalLink, ArrowUpDown, ArrowUp, ArrowDown, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
 import { formatDateTimeID } from "@/lib/utils";
 import { useTimedMessage } from "@/hooks/useTimedMessage";
 import { useWsEvent } from "@/hooks/useWebSocket";
 import {
+  bulkDeleteAccounts,
   deleteAccount,
   fetchAccounts,
   loginAccount,
@@ -207,6 +208,25 @@ export default function AccountList() {
     try { await deleteAccount(id); showSuccess(`Deleted #${id}`); await load(); } catch (err) { showError(err); }
   }
 
+  async function handleBulkDelete(status: "error" | "exhausted") {
+    if (!provider) return;
+    const targets = accounts.filter((a) => a.status === status);
+    if (targets.length === 0) return;
+    const label = status.charAt(0).toUpperCase() + status.slice(1);
+    if (!confirm(
+      `Delete ${targets.length} ${status} ${labelProvider(provider)} accounts?\n\n` +
+      `This is permanent. Token data, request log references, and VCC links will be cleaned up.\n\n` +
+      `Type OK to continue.`
+    )) return;
+    try {
+      const res = await bulkDeleteAccounts(provider, [status]);
+      showSuccess(`Deleted ${res.deleted} ${label} ${labelProvider(provider)} account${res.deleted === 1 ? "" : "s"}.`);
+      await load();
+    } catch (err) {
+      showError(err);
+    }
+  }
+
   async function handleToggle(id: number, currentEnabled: boolean) {
     const next = !currentEnabled;
     setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, enabled: next } : a)));
@@ -270,6 +290,7 @@ export default function AccountList() {
   useEffect(() => { setPage(1); }, [search, provider, statusFilter]);
 
   const errorCount = accounts.filter((a) => a.status === "error").length;
+  const exhaustedCount = accounts.filter((a) => a.status === "exhausted").length;
   const enabledCount = accounts.filter((a) => a.enabled !== false).length;
   const disabledCount = accounts.filter((a) => a.enabled === false).length;
 
@@ -301,6 +322,26 @@ export default function AccountList() {
           </Button>
           <Button variant="outline" size="sm" onClick={() => handleToggleAll(false)} disabled={enabledCount === 0}>
             <XCircle className="w-4 h-4 mr-2 text-[var(--error)]" /> Disable All ({enabledCount})
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleBulkDelete("exhausted")}
+            disabled={exhaustedCount === 0}
+            className="border-[var(--warning)]/40 text-[var(--warning)] hover:bg-[var(--warning)]/10"
+            title="Delete all exhausted accounts for this provider"
+          >
+            <Trash2 className="w-4 h-4 mr-2" /> Delete Exhausted ({exhaustedCount})
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleBulkDelete("error")}
+            disabled={errorCount === 0}
+            className="border-[var(--error)]/40 text-[var(--error)] hover:bg-[var(--error)]/10"
+            title="Delete all error accounts for this provider"
+          >
+            <AlertTriangle className="w-4 h-4 mr-2" /> Delete Error ({errorCount})
           </Button>
         </div>
       </div>

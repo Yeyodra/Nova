@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { db } from "../db/index";
 import { accounts, requestLogs, vccCards, vccTransactions } from "../db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { encrypt, decrypt } from "../utils/crypto";
 import { broadcast } from "../ws/index";
 import type { NewAccount } from "../db/schema";
@@ -756,6 +756,67 @@ accountsRouter.post("/toggle-all", async (c) => {
 
   const count = await pool.setEnabledByProvider(body.provider as ProviderName, body.enabled);
   return c.json({ provider: body.provider, enabled: body.enabled, count });
+});
+
+/**
+ * POST /api/accounts/bulk-delete - Bulk delete accounts by provider + statuses
+ * Body: { provider: string, statuses: string[] }  (e.g. { provider: "codebuddy", statuses: ["error"] })
+ *
+ * Behavior:
+ * - Selects matching accounts (provider AND status IN statuses)
+ * - Nullifies FK references (request_logs.accountId, vcc_cards.usedByAccountId)
+ * - Deletes vcc_transactions rows referencing the accounts (matches single-delete behavior)
+ * - Deletes the accounts in a single batch
+ * - Invalidates pool for the provider, broadcasts ws event
+ */
+accountsRouter.post("/bulk-delete", async (c) => {
+  const body = await c.req.json<{ provider: string; statuses: string[] }>();
+
+  if (!body.provider || typeof body.provider !== "string") {
+    return c.json({ error: "provider (string) is required" }, 400);
+  }
+  if (!Array.isArray(body.statuses) || body.statuses.length === 0) {
+    return c.json({ error: "statuses (non-empty string[]) is required" }, 400);
+  }
+
+  const allowedStatuses = ["active", "exhausted", "error", "pending"];
+  const statuses = body.statuses.filter((s) => allowedStatuses.includes(s));
+  if (statuses.length === 0) {
+    return c.json({ error: `statuses must contain at least one of: ${allowedStatuses.join(", ")}` }, 400);
+  }
+
+  // Find target accounts
+  const targets = await db
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(and(eq(accounts.provider, body.provider), inArray(accounts.status, statuses)));
+
+  if (targets.length === 0) {
+    return c.json({ provider: body.provider, statuses, deleted: 0, ids: [] });
+  }
+
+  const ids = targets.map((t) => t.id);
+
+  // Nullify / cleanup FK references before delete to avoid constraint errors
+  await db.update(requestLogs).set({ accountId: null }).where(inArray(requestLogs.accountId, ids));
+  await db.update(vccCards).set({ usedByAccountId: null }).where(inArray(vccCards.usedByAccountId, ids));
+  await db.delete(vccTransactions).where(inArray(vccTransactions.accountId, ids));
+
+  // Delete accounts in a single statement
+  const deleted = await db
+    .delete(accounts)
+    .where(and(eq(accounts.provider, body.provider), inArray(accounts.status, statuses)))
+    .returning({ id: accounts.id });
+
+  pool.invalidate(body.provider as ProviderName);
+  broadcast({ type: "accounts_bulk_deleted", data: { provider: body.provider, statuses, ids: deleted.map((d) => d.id) } });
+
+  return c.json({
+    provider: body.provider,
+    statuses,
+    deleted: deleted.length,
+    ids: deleted.map((d) => d.id),
+  });
 });
 
 /**
